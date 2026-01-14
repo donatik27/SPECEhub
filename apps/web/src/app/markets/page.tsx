@@ -1,0 +1,283 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { Store, TrendingUp, Calendar, RefreshCw, DollarSign } from 'lucide-react'
+
+interface Market {
+  id: string
+  question: string
+  category: string
+  volume: number
+  liquidity: number
+  endDate: string
+  active: boolean
+  closed: boolean
+  outcomes: string
+  outcomePrices: string
+}
+
+export default function MarketsPage() {
+  const [markets, setMarkets] = useState<Market[]>([])
+  const [loading, setLoading] = useState(true)
+  const [lastUpdate, setLastUpdate] = useState<string>('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const marketsPerPage = 20
+
+  const fetchMarkets = async () => {
+    try {
+      setLoading(true)
+      
+      // Fetch from our API route (avoids CORS issues)
+      const response = await fetch('/api/markets', {
+        cache: 'no-cache'
+      })
+      
+      if (!response.ok) {
+        console.error('API Response:', response.status, response.statusText)
+        throw new Error(`API error: ${response.status}`)
+      }
+
+      const data = await response.json()
+
+      setMarkets(data)
+      setLastUpdate(new Date().toISOString())
+      
+      console.log(`✅ Loaded ${sorted.length} markets`)
+      
+    } catch (error) {
+      console.error('Failed to fetch markets:', error)
+      alert('Failed to load markets')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchMarkets()
+  }, [])
+
+  // Pagination
+  const totalPages = Math.ceil(markets.length / marketsPerPage)
+  const startIndex = (currentPage - 1) * marketsPerPage
+  const endIndex = startIndex + marketsPerPage
+  const currentMarkets = markets.slice(startIndex, endIndex)
+
+  const goToPage = (page: number) => {
+    setCurrentPage(Math.max(1, Math.min(page, totalPages)))
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return 'N/A'
+    const date = new Date(dateStr)
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  }
+
+  return (
+    <div className="p-8 max-w-7xl mx-auto">
+      {/* Cosmic Header */}
+      <div className="mb-8 relative">
+        {/* Alien stars background */}
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-2 left-10 w-1 h-1 bg-primary animate-pulse"></div>
+          <div className="absolute top-8 right-20 w-1 h-1 bg-white animate-pulse"></div>
+          <div className="absolute top-4 right-40 w-1 h-1 bg-primary animate-pulse" style={{animationDelay: '0.5s'}}></div>
+        </div>
+        
+        <div className="flex items-center justify-between">
+          <div className="relative">
+            <div className="flex items-center gap-4 mb-3">
+              <div className="text-4xl">🎲</div>
+              <h1 className="text-2xl font-bold text-primary alien-glow tracking-wider">MARKETS.DB</h1>
+              {loading && <span className="text-primary animate-pulse">█</span>}
+            </div>
+            <p className="text-muted-foreground font-mono text-sm">
+              &gt; ANALYZING TOP_{markets.length} PREDICTION_MARKETS...
+            </p>
+          </div>
+
+          <button
+            onClick={fetchMarkets}
+            disabled={loading}
+            className="px-6 py-3 bg-primary text-black font-bold hover:bg-primary/80 transition-all disabled:opacity-50 flex items-center gap-3 text-sm uppercase tracking-wider"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            {loading ? 'SCANNING...' : 'REFRESH'}
+          </button>
+        </div>
+        {lastUpdate && (
+          <p className="text-xs text-primary font-mono mt-3 animate-pulse">
+            &gt; LAST_SCAN: {new Date(lastUpdate).toLocaleTimeString()} UTC
+          </p>
+        )}
+      </div>
+
+      {/* Stats - Alien Data Pods */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="bg-card  p-4 relative overflow-hidden group  transition-all">
+          <div className="absolute top-0 right-0 text-4xl opacity-10">🎲</div>
+          <p className="text-xs font-mono text-primary mb-2 uppercase tracking-wider">Total_Markets</p>
+          <p className="text-3xl font-bold text-white relative z-10">{markets.length}</p>
+        </div>
+        <div className="bg-card  p-4 relative overflow-hidden group  transition-all">
+          <div className="absolute top-0 right-0 text-4xl opacity-10">💰</div>
+          <p className="text-xs font-mono text-primary mb-2 uppercase tracking-wider">Total_Volume</p>
+          <p className="text-3xl font-bold text-primary relative z-10">
+            ${(markets.reduce((a, b) => a + b.volume, 0) / 1000000).toFixed(1)}M
+          </p>
+        </div>
+        <div className="bg-card  p-4 relative overflow-hidden group  transition-all">
+          <div className="absolute top-0 right-0 text-4xl opacity-10">📊</div>
+          <p className="text-xs font-mono text-primary mb-2 uppercase tracking-wider">Current_Page</p>
+          <p className="text-3xl font-bold text-white relative z-10">{currentPage} / {totalPages}</p>
+        </div>
+        <div className="bg-card  p-4 relative overflow-hidden group  transition-all">
+          <div className="absolute top-0 right-0 text-4xl opacity-10">💎</div>
+          <p className="text-xs font-mono text-primary mb-2 uppercase tracking-wider">Avg_Liquidity</p>
+          <p className="text-3xl font-bold text-white relative z-10">
+            ${(markets.reduce((a, b) => a + b.liquidity, 0) / markets.length / 1000).toFixed(0)}k
+          </p>
+        </div>
+      </div>
+
+      {/* Table - Alien Database */}
+      <div className="bg-card  overflow-hidden relative">
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary to-transparent animate-pulse"></div>
+        <div className="overflow-x-auto">
+          <table className="w-full table-fixed">
+            <thead className="bg-black/60 border-b-2 
+              <tr className="font-mono">
+                <th className="text-left p-3 text-xs font-bold text-primary uppercase tracking-wider w-16">Rank</th>
+                <th className="text-left p-3 text-xs font-bold text-primary uppercase tracking-wider">Question</th>
+                <th className="text-left p-3 text-xs font-bold text-primary uppercase tracking-wider w-32">Category</th>
+                <th className="text-right p-3 text-xs font-bold text-primary uppercase tracking-wider w-32">Volume</th>
+                <th className="text-right p-3 text-xs font-bold text-primary uppercase tracking-wider w-32">Liquidity</th>
+                <th className="text-right p-3 text-xs font-bold text-primary uppercase tracking-wider w-32">End_Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {currentMarkets.map((market, idx) => (
+                <tr 
+                  key={market.id}
+                  className="border-t  hover:bg-primary/5 hover: transition-all group"
+                >
+                  <td className="p-3 text-primary font-bold font-mono text-sm group-hover:text-white transition-colors">
+                    #{String(startIndex + idx + 1).padStart(3, '0')}
+                  </td>
+                  <td className="p-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl flex-shrink-0">🎯</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-bold text-sm text-white group-hover:text-primary transition-colors truncate">
+                          {market.question}
+                        </p>
+                        <p className="text-xs text-muted-foreground font-mono">
+                          ID: {market.id}
+                        </p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="p-3">
+                    <span className="px-2 py-1 bg-primary/20 text-primary text-xs font-mono 
+                      {market.category}
+                    </span>
+                  </td>
+                  <td className="p-3 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <span className="text-primary text-sm">💵</span>
+                      <span className="font-bold font-mono text-base text-primary">
+                        ${(market.volume / 1000).toFixed(0)}k
+                      </span>
+                    </div>
+                  </td>
+                  <td className="p-3 text-right">
+                    <span className="font-mono text-sm text-muted-foreground">
+                      ${(market.liquidity / 1000).toFixed(0)}k
+                    </span>
+                  </td>
+                  <td className="p-3 text-right">
+                    <span className="font-mono text-xs text-white">
+                      {formatDate(market.endDate)}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Pagination - Alien Navigation */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-6 p-4 bg-card 
+          <div className="text-sm font-mono text-primary flex items-center gap-2">
+            <span className="animate-pulse">◆</span>
+            SECTOR_{currentPage} / {totalPages}
+          </div>
+          
+          <div className="flex gap-2">
+            <button
+              onClick={() => goToPage(1)}
+              disabled={currentPage === 1}
+              className="px-4 py-2  hover: hover:text-primary bg-transparent disabled:opacity-30 disabled:cursor-not-allowed text-sm font-bold transition-all"
+            >
+              ««
+            </button>
+            <button
+              onClick={() => goToPage(currentPage - 1)}
+              disabled={currentPage === 1}
+              className="px-4 py-2  hover: hover:text-primary bg-transparent disabled:opacity-30 disabled:cursor-not-allowed text-sm font-bold uppercase transition-all"
+            >
+              ← PREV
+            </button>
+
+            {/* Page numbers */}
+            <div className="flex gap-1">
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum
+                if (totalPages <= 5) {
+                  pageNum = i + 1
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i
+                } else {
+                  pageNum = currentPage - 2 + i
+                }
+                
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => goToPage(pageNum)}
+                    className={`px-4 py-2 text-sm font-bold font-mono transition-all ${
+                      currentPage === pageNum
+                        ? 'bg-primary text-black 
+                        : 'bg-transparent text-white  hover: hover:text-primary'
+                    }`}
+                  >
+                    {String(pageNum).padStart(2, '0')}
+                  </button>
+                )
+              })}
+            </div>
+
+            <button
+              onClick={() => goToPage(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className="px-4 py-2  hover: hover:text-primary bg-transparent disabled:opacity-30 disabled:cursor-not-allowed text-sm font-bold uppercase transition-all"
+            >
+              NEXT →
+            </button>
+            <button
+              onClick={() => goToPage(totalPages)}
+              disabled={currentPage === totalPages}
+              className="px-4 py-2  hover: hover:text-primary bg-transparent disabled:opacity-30 disabled:cursor-not-allowed text-sm font-bold transition-all"
+            >
+              »»
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

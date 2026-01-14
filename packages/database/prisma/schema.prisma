@@ -1,0 +1,154 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Tier {
+  S
+  A
+  B
+  C
+  D
+  E
+}
+
+enum MarketStatus {
+  OPEN
+  CLOSED
+  RESOLVED
+}
+
+enum TradeSide {
+  BUY
+  SELL
+}
+
+model Trader {
+  id              String    @id @default(uuid())
+  address         String    @unique
+  displayName     String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Tier and scoring
+  tier            Tier      @default(E)
+  rarityScore     Int       @default(0)
+  
+  // PnL metrics
+  realizedPnl     Decimal   @default(0) @db.Decimal(20, 8)
+  unrealizedPnl   Decimal   @default(0) @db.Decimal(20, 8)
+  totalPnl        Decimal   @default(0) @db.Decimal(20, 8)
+  
+  // Performance metrics
+  winRate         Float     @default(0)
+  profitFactor    Float     @default(0)
+  maxDrawdown     Float     @default(0)
+  tradeCount      Int       @default(0)
+  
+  lastActiveAt    DateTime?
+  tags            String[]  @default([])
+  
+  // Relations
+  trades          Trade[]
+  positions       PositionSnapshot[]
+  
+  @@index([tier, rarityScore])
+  @@index([totalPnl])
+  @@index([lastActiveAt])
+}
+
+model Market {
+  id              String        @id
+  question        String
+  category        String?
+  endDate         DateTime?
+  liquidity       Decimal?      @db.Decimal(20, 8)
+  volume          Decimal?      @db.Decimal(20, 8)
+  status          MarketStatus  @default(OPEN)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  // Relations
+  trades          Trade[]
+  positions       PositionSnapshot[]
+  smartStats      MarketSmartStats[]
+  
+  @@index([status, category])
+  @@index([endDate])
+}
+
+model Trade {
+  id              String      @id
+  traderId        String
+  marketId        String
+  outcome         String
+  side            TradeSide
+  size            Decimal     @db.Decimal(20, 8)
+  price           Decimal     @db.Decimal(10, 8)
+  timestamp       DateTime
+  raw             Json?
+  
+  createdAt       DateTime    @default(now())
+  
+  // Relations
+  trader          Trader      @relation(fields: [traderId], references: [id])
+  market          Market      @relation(fields: [marketId], references: [id])
+  
+  @@index([traderId, timestamp])
+  @@index([marketId, timestamp])
+  @@index([timestamp])
+}
+
+model PositionSnapshot {
+  id              String      @id @default(uuid())
+  traderId        String
+  marketId        String
+  shares          Decimal     @db.Decimal(20, 8)
+  avgPrice        Decimal     @db.Decimal(10, 8)
+  pnlEst          Decimal     @db.Decimal(20, 8)
+  timestamp       DateTime
+  
+  createdAt       DateTime    @default(now())
+  
+  // Relations
+  trader          Trader      @relation(fields: [traderId], references: [id])
+  market          Market      @relation(fields: [marketId], references: [id])
+  
+  @@index([traderId, marketId, timestamp])
+  @@index([timestamp])
+}
+
+model MarketSmartStats {
+  id              String      @id @default(uuid())
+  marketId        String
+  computedAt      DateTime    @default(now())
+  
+  smartCount      Int         @default(0)
+  smartWeighted   Decimal     @default(0) @db.Decimal(20, 8)
+  smartShare      Float       @default(0)
+  smartScore      Decimal     @default(0) @db.Decimal(20, 8)
+  topSmartTraders Json?
+  
+  // Relations
+  market          Market      @relation(fields: [marketId], references: [id])
+  
+  @@index([marketId, computedAt])
+  @@index([smartScore])
+}
+
+model IngestionState {
+  id              String      @id @default(uuid())
+  source          String
+  key             String
+  cursor          String?
+  lastTimestamp   DateTime?
+  updatedAt       DateTime    @updatedAt
+  
+  @@unique([source, key])
+  @@index([source])
+}
+

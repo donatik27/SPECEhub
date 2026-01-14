@@ -1,0 +1,129 @@
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+ 
+@layer base {
+  :root {
+    /* Pixel Space Theme - Black & White with Alien Green */
+    --background: 0 0% 0%;           /* Pure black */
+    --foreground: 0 0% 100%;         /* Pure white */
+ 
+    --card: 0 0% 5%;                 /* Almost black */
+    --card-foreground: 0 0% 100%;
+ 
+    --popover: 0 0% 8%;
+    --popover-foreground: 0 0% 100%;
+ 
+    --primary: 120 100% 50%;         /* Alien green */
+    --primary-foreground: 0 0% 0%;
+ 
+    --secondary: 0 0% 15%;           /* Dark gray */
+    --secondary-foreground: 0 0% 100%;
+ 
+    --muted: 0 0% 20%;
+    --muted-foreground: 0 0% 70%;
+ 
+    --accent: 120 100% 50%;          /* Alien green accent */
+    --accent-foreground: 0 0% 0%;
+ 
+    --destructive: 0 100% 50%;       /* Pure red */
+    --destructive-foreground: 0 0% 100%;
+ 
+    --border: 0 0% 25%;              /* Gray borders */
+    --input: 0 0% 15%;
+    --ring: 120 100% 50%;
+    
+    --gold: 45 100% 51%;             /* Golden color for S-tier */
+    
+    --radius: 0px;                   /* Sharp pixel corners */
+  }
+}
+ 
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'VT323', monospace;
+    font-size: 18px;
+    image-rendering: pixelated;
+    background-image: 
+      radial-gradient(circle at 20% 80%, rgba(0, 255, 0, 0.05) 0%, transparent 50%),
+      radial-gradient(circle at 80% 20%, rgba(0, 255, 0, 0.03) 0%, transparent 50%);
+  }
+  
+  /* Pixel font for headers */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Press Start 2P', cursive;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+  
+  /* CRT scanline effect */
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.15),
+      rgba(0, 0, 0, 0.15) 1px,
+      transparent 1px,
+      transparent 2px
+    );
+    z-index: 9999;
+  }
+  
+  /* Pixel button styles */
+  button {
+    image-rendering: pixelated;
+    transition: all 0.1s ease;
+  }
+  
+  button:hover {
+    transform: scale(1.05);
+  }
+  
+  /* Alien glow effect for primary elements */
+  .alien-glow {
+    box-shadow: 0 0 10px rgba(0, 255, 0, 0.5), 
+                0 0 20px rgba(0, 255, 0, 0.3),
+                inset 0 0 10px rgba(0, 255, 0, 0.1);
+  }
+  
+  /* Golden glow for S-tier */
+  .gold-glow {
+    box-shadow: 0 0 15px rgba(255, 215, 0, 0.6), 
+                0 0 30px rgba(255, 215, 0, 0.4),
+                inset 0 0 15px rgba(255, 215, 0, 0.2);
+    animation: gold-pulse 2s ease-in-out infinite;
+  }
+  
+  @keyframes gold-pulse {
+    0%, 100% { 
+      box-shadow: 0 0 15px rgba(255, 215, 0, 0.6), 
+                  0 0 30px rgba(255, 215, 0, 0.4),
+                  inset 0 0 15px rgba(255, 215, 0, 0.2);
+    }
+    50% { 
+      box-shadow: 0 0 20px rgba(255, 215, 0, 0.8), 
+                  0 0 40px rgba(255, 215, 0, 0.6),
+                  inset 0 0 20px rgba(255, 215, 0, 0.3);
+    }
+  }
+  
+  /* Pixel border - NO visible borders, only subtle glow */
+  .pixel-border {
+    border: none;
+    box-shadow: 0 0 5px rgba(0, 255, 0, 0.2);
+  }
+}
+

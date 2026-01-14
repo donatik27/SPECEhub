@@ -1,0 +1,27 @@
+{
+  "name": "spacehub",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean",
+    "db:migrate": "cd packages/database && pnpm prisma migrate dev",
+    "db:generate": "cd packages/database && pnpm prisma generate",
+    "db:studio": "cd packages/database && pnpm prisma studio"
+  },
+  "devDependencies": {
+    "turbo": "^1.11.3"
+  },
+  "packageManager": "pnpm@8.15.1",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}
+
