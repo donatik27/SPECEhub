@@ -102,7 +102,7 @@ export default function TradersPage() {
           <div className="relative">
             <div className="flex items-center gap-4 mb-3">
               <div className="text-4xl">👽</div>
-              <h1 className="text-2xl font-bold text-primary alien-glow tracking-wider">TRADER_INTEL.EXE</h1>
+              <h1 className="text-2xl font-bold text-primary alien-glow tracking-wider">TRADER_INTEL</h1>
               {loading && <span className="text-primary animate-pulse">█</span>}
             </div>
             <p className="text-muted-foreground font-mono text-sm">
@@ -144,7 +144,7 @@ export default function TradersPage() {
         <div className="flex items-center gap-3">
           <span className="text-sm font-mono text-primary">TIER_FILTER:</span>
           <div className="flex gap-2">
-            {['all', 'S', 'A', 'B', 'C', 'D', 'E'].map((tier) => (
+            {['all', 'S', 'A', 'B', 'C', 'D'].map((tier) => (
               <button
                 key={tier}
                 onClick={() => setFilterTier(tier)}
@@ -179,14 +179,6 @@ export default function TradersPage() {
             }`}
           >
             WIN_RATE <ArrowUpDown className="h-3 w-3" />
-          </button>
-          <button
-            onClick={() => setSortBy('trades')}
-            className={`px-3 py-1 text-sm flex items-center gap-2 font-bold uppercase pixel-border transition-all ${
-              sortBy === 'trades' ? 'bg-primary text-black border-primary' : 'bg-transparent text-white border-white/30 hover:border-primary hover:text-primary'
-            }`}
-          >
-            TRADES <ArrowUpDown className="h-3 w-3" />
           </button>
         </div>
       </div>

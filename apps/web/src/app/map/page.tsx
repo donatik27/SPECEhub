@@ -95,9 +95,9 @@ export default function MapPage() {
   }
 
   return (
-    <div className="p-8 max-w-7xl mx-auto font-mono text-white">
+    <div className="p-12 max-w-6xl mx-auto font-mono text-white">
       {/* Header */}
-      <div className="mb-6 border-b-2 border-primary/50 pb-4">
+      <div className="mb-8">
         <div className="flex items-center justify-between">
           <div>
             <div className="flex items-center gap-3 mb-2">
@@ -153,7 +153,7 @@ export default function MapPage() {
       </div>
 
       {/* 3D Earth Globe with Three.js */}
-      <div className="bg-black pixel-border border-primary/40 relative overflow-hidden mb-6 h-[600px]">
+      <div className="bg-black pixel-border border-primary/40 relative overflow-hidden mb-8 h-[550px]">
         {/* Info overlay */}
         <div className="absolute top-4 left-4 bg-black/90 pixel-border border-primary/50 p-3 z-20 pointer-events-none">
           <p className="text-primary font-mono text-xs mb-1">&gt; THREE.JS_GLOBE.3D</p>

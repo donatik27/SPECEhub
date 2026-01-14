@@ -99,13 +99,13 @@ export default function HomePage() {
         </div>
         
         <div className="flex items-center gap-3 mb-4 relative z-10">
-          <div className="text-4xl">👽</div>
+          <div className="text-4xl">🛸</div>
           <div>
             <h1 className="text-3xl font-bold text-primary alien-glow tracking-wider">
-              POLYMARKET SMART MONEY
+              SPACEHUB COMMAND CENTER
             </h1>
             <p className="text-muted-foreground text-sm mt-1">
-              &gt; Track the best traders and smart markets
+              &gt; Polymarket Smart Money Tracker
             </p>
           </div>
         </div>
