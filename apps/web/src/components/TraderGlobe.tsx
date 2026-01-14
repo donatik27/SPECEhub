@@ -12,10 +12,12 @@ interface TraderMarker {
   lat: number;
   lng: number;
   pnl: number;
+  profileImage: string;
 }
 
 interface TraderGlobeProps {
   traders: TraderMarker[];
+  onTraderHover?: (trader: TraderMarker | null) => void;
 }
 
 // Convert lat/lng to 3D coordinates on sphere surface
@@ -83,7 +85,7 @@ function RotatingGlobe({
 }: { 
   traders: TraderMarker[];
   shouldRotate: boolean;
-  onHoverChange: (isHovered: boolean) => void;
+  onHoverChange: (trader: TraderMarker | null) => void;
 }) {
   const groupRef = useRef<THREE.Group>(null);
 
@@ -117,7 +119,7 @@ function TraderPin({
   onHoverChange 
 }: { 
   trader: TraderMarker;
-  onHoverChange?: (isHovered: boolean) => void;
+  onHoverChange?: (trader: TraderMarker | null) => void;
 }) {
   const position = useMemo(
     () => latLngToVector3(trader.lat, trader.lng, 2.05),
@@ -128,12 +130,12 @@ function TraderPin({
 
   const handlePointerOver = () => {
     setHovered(true);
-    onHoverChange?.(true);
+    onHoverChange?.(trader);
   };
 
   const handlePointerOut = () => {
     setHovered(false);
-    onHoverChange?.(false);
+    onHoverChange?.(null);
   };
 
   // Tier colors
@@ -163,29 +165,6 @@ function TraderPin({
         <meshBasicMaterial color={tierColor} transparent opacity={0.3} />
       </mesh>
 
-      {/* Hover tooltip - microscopic */}
-      {hovered && (
-        <Html 
-          distanceFactor={80} 
-          position={[0, 0.04, 0]}
-          style={{ 
-            pointerEvents: 'none'
-          }}
-        >
-          <div style={{
-            backgroundColor: 'rgba(0,0,0,0.95)',
-            border: '0.5px solid #00ff00',
-            padding: '0.5px 1px',
-            fontSize: '2.5px',
-            color: '#00ff00',
-            fontWeight: 'bold',
-            whiteSpace: 'nowrap',
-            lineHeight: '1.1'
-          }}>
-            {trader.tier}•{trader.displayName.length > 5 ? trader.displayName.slice(0, 5) + '..' : trader.displayName}
-          </div>
-        </Html>
-      )}
     </group>
   );
 }
@@ -229,7 +208,7 @@ function Stars() {
 }
 
 // Main 3D Globe Component
-export default function TraderGlobe({ traders }: TraderGlobeProps) {
+export default function TraderGlobe({ traders, onTraderHover }: TraderGlobeProps) {
   const [shouldRotate, setShouldRotate] = React.useState(false);
   const [isHovered, setIsHovered] = React.useState(false);
   const [isInteracting, setIsInteracting] = React.useState(false);
@@ -254,9 +233,11 @@ export default function TraderGlobe({ traders }: TraderGlobeProps) {
   };
 
   // Handle trader hover
-  const handleHoverChange = (hovered: boolean) => {
-    setIsHovered(hovered);
-    if (hovered) {
+  const handleHoverChange = (trader: TraderMarker | null) => {
+    setIsHovered(trader !== null);
+    onTraderHover?.(trader);
+    
+    if (trader) {
       setShouldRotate(false);
       // Reset timer when hover ends
       if (inactivityTimerRef.current) {

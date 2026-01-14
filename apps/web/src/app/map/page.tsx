@@ -20,6 +20,8 @@ interface Trader {
   displayName: string
   tier: string
   rarityScore: number
+  avatar: string
+  estimatedPnL: number
 }
 
 interface TraderMarker {
@@ -31,6 +33,14 @@ interface TraderMarker {
   y: number
 }
 
+interface HoveredTrader {
+  address: string
+  displayName: string
+  tier: string
+  pnl: number
+  profileImage: string
+}
+
 export default function MapPage() {
   const [stats, setStats] = useState({
     totalTraders: 0,
@@ -40,7 +50,7 @@ export default function MapPage() {
   })
   const [traders, setTraders] = useState<TraderMarker[]>([])
   const [loading, setLoading] = useState(true)
-  const [hoveredTrader, setHoveredTrader] = useState<TraderMarker | null>(null)
+  const [hoveredTrader, setHoveredTrader] = useState<HoveredTrader | null>(null)
 
   useEffect(() => {
     fetchData()
@@ -164,6 +174,41 @@ export default function MapPage() {
             <span className="text-primary">● B</span>
           </div>
         </div>
+
+        {/* Hovered Trader Info - Top Right */}
+        {hoveredTrader && (
+          <div className="absolute top-4 right-4 bg-black/95 pixel-border border-primary/50 p-4 z-30 pointer-events-none min-w-[200px]">
+            <div className="flex items-center gap-3 mb-2">
+              <img 
+                src={hoveredTrader.profileImage} 
+                alt={hoveredTrader.displayName}
+                className="w-10 h-10 rounded-full border-2"
+                style={{
+                  borderColor: hoveredTrader.tier === 'S' ? '#FFD700' : 
+                               hoveredTrader.tier === 'A' ? '#00ff00' : 
+                               '#00aaff'
+                }}
+              />
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${
+                    hoveredTrader.tier === 'S' ? 'bg-[#FFD700] text-black' :
+                    hoveredTrader.tier === 'A' ? 'bg-[#00ff00] text-black' :
+                    'bg-[#00aaff] text-black'
+                  }`}>
+                    {hoveredTrader.tier}
+                  </span>
+                  <p className="text-white font-mono text-xs font-bold truncate">
+                    {hoveredTrader.displayName}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className={`text-sm font-bold font-mono ${hoveredTrader.pnl >= 0 ? 'text-[#00ff00]' : 'text-red-500'}`}>
+              PnL: {hoveredTrader.pnl >= 0 ? '+' : ''}{(hoveredTrader.pnl / 1000).toFixed(1)}K
+            </div>
+          </div>
+        )}
         
         {/* Controls hint */}
         <div className="absolute bottom-4 right-4 bg-black/90 pixel-border border-primary/50 p-2 z-20 pointer-events-none">
@@ -185,8 +230,10 @@ export default function MapPage() {
               tier: m.trader.tier,
               lat: m.lat,
               lng: m.lng,
-              pnl: m.trader.rarityScore,
+              pnl: m.trader.estimatedPnL,
+              profileImage: m.trader.avatar,
             }))}
+            onTraderHover={(trader) => setHoveredTrader(trader)}
           />
         </Suspense>
       </div>
