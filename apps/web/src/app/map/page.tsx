@@ -69,8 +69,14 @@ export default function MapPage() {
       
       // 3. Map traders to locations (using CRYPTO as fallback for faster loading)
       const tradersWithLocations: TraderMarker[] = smartTraders.slice(0, 100).map((trader) => {
-        // Get random location for now (smart markets takes too long to load)
-        const location = getTraderLocation([{ question: 'CRYPTO' }])
+        // Special location for RN1 -> Taiwan (Taipei)
+        let location
+        if (trader.displayName === 'RN1' || trader.address.toLowerCase().includes('rn1')) {
+          location = getTraderLocation([{ question: 'TAIPEI TAIWAN' }])
+        } else {
+          // Get random location for now (smart markets takes too long to load)
+          location = getTraderLocation([{ question: 'CRYPTO' }])
+        }
         
         // Convert lat/lng to screen coordinates
         const x = ((location.lng + 180) / 360) * 100
