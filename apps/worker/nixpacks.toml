@@ -1,0 +1,22 @@
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = [
+  "cd ../..",
+  "corepack enable",
+  "corepack prepare pnpm@latest --activate",
+  "pnpm install --frozen-lockfile"
+]
+
+[phases.build]
+cmds = [
+  "cd ../..",
+  "pnpm --filter @polymarket/database prisma generate",
+  "pnpm --filter @polymarket/shared build",
+  "pnpm --filter @polymarket/database build",
+  "pnpm --filter @polymarket/worker build"
+]
+
+[start]
+cmd = "cd ../.. && node apps/worker/dist/index.js"
