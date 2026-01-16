@@ -1,8 +1,6 @@
-import { PrismaClient, Tier } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 
 export * from '@prisma/client';
-export { Tier };
-export type { Tier as TierType };
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
