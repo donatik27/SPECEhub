@@ -3,6 +3,7 @@ import { logger } from './lib/logger';
 import { startWorkers } from './workers';
 import { scheduleJobs } from './scheduler';
 
+// Trigger Railway rebuild
 async function main() {
   logger.info('🚀 Starting Polymarket Worker...');
 
