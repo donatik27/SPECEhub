@@ -10,10 +10,14 @@ cmds = [
 
 [phases.build]
 cmds = [
+  "DATABASE_URL=\"postgresql://dummy:dummy@localhost:5432/dummy\" pnpm --filter @polymarket/database prisma generate",
   "pnpm --filter @polymarket/database build",
   "pnpm --filter @polymarket/shared build",
   "pnpm --filter @polymarket/worker build"
 ]
+
+[variables]
+DATABASE_URL = "postgresql://dummy:dummy@localhost:5432/dummy"
 
 [start]
 cmd = "cd apps/worker && node dist/index.js"
