@@ -40,12 +40,14 @@ function Earth() {
 
   return (
     <>
-      {/* Main Earth sphere */}
+      {/* Main Earth sphere - SOLID, NOT TRANSPARENT */}
       <Sphere args={[2, 64, 64]}>
         <meshStandardMaterial
           color="#ffffff"
           roughness={0.7}
           metalness={0.2}
+          transparent={false}
+          opacity={1.0}
         >
           <primitive
             attach="map"
@@ -54,23 +56,23 @@ function Earth() {
         </meshStandardMaterial>
       </Sphere>
 
-      {/* Glowing atmosphere */}
+      {/* Glowing atmosphere - reduced opacity */}
       <Sphere args={[2.15, 32, 32]}>
         <meshBasicMaterial
           color="#4da6ff"
           transparent
-          opacity={0.15}
+          opacity={0.08}
           side={THREE.BackSide}
         />
       </Sphere>
 
-      {/* Green alien grid overlay */}
+      {/* Green alien grid overlay - reduced opacity */}
       <Sphere args={[2.05, 24, 24]}>
         <meshBasicMaterial
           color="#00ff00"
           wireframe
           transparent
-          opacity={0.12}
+          opacity={0.06}
         />
       </Sphere>
     </>
@@ -143,7 +145,7 @@ function TraderPin({
     window.location.href = `/traders/${trader.address}`;
   };
 
-  // Tier colors
+  // Tier colors for border
   const tierColor = {
     S: '#FFD700',
     A: '#00ff00',
@@ -151,26 +153,67 @@ function TraderPin({
     C: '#ffffff',
     D: '#888888',
     E: '#444444',
-  }[trader.tier] || '#ffffff';
+  }[trader.tier] || '#FFD700';
 
   return (
     <group position={position}>
-      {/* Pin marker */}
-      <mesh
-        onPointerOver={handlePointerOver}
-        onPointerOut={handlePointerOut}
-        onClick={handleClick}
+      {/* Avatar Image */}
+      <Html
+        position={[0, 0, 0]}
+        center
+        distanceFactor={0.6}
+        zIndexRange={[100, 0]}
+        style={{
+          pointerEvents: 'auto',
+          cursor: 'pointer',
+        }}
       >
-        <sphereGeometry args={[0.03, 16, 16]} />
-        <meshBasicMaterial color={tierColor} />
-      </mesh>
+        <div
+          onMouseEnter={handlePointerOver}
+          onMouseLeave={handlePointerOut}
+          onClick={handleClick}
+          style={{
+            width: '50px',
+            height: '50px',
+            borderRadius: '50%',
+            border: `3px solid ${tierColor}`,
+            overflow: 'hidden',
+            transition: 'all 0.25s ease-out',
+            boxShadow: hovered 
+              ? `0 0 25px ${tierColor}, 0 0 50px ${tierColor}` 
+              : `0 0 15px ${tierColor}`,
+            transform: hovered ? 'scale(1.2)' : 'scale(1)',
+            backgroundColor: '#000',
+            willChange: 'transform, box-shadow',
+          }}
+        >
+          <img
+            src={trader.profileImage}
+            alt={trader.displayName}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+            }}
+            onError={(e) => {
+              // Fallback to colored circle if image fails to load
+              const target = e.target as HTMLImageElement;
+              target.style.display = 'none';
+              if (target.parentElement) {
+                target.parentElement.style.backgroundColor = tierColor;
+              }
+            }}
+          />
+        </div>
+      </Html>
 
-      {/* Glow effect */}
-      <mesh>
-        <sphereGeometry args={[0.05, 16, 16]} />
-        <meshBasicMaterial color={tierColor} transparent opacity={0.3} />
-      </mesh>
-
+      {/* Glow effect behind avatar */}
+      {hovered && (
+        <mesh>
+          <sphereGeometry args={[0.12, 16, 16]} />
+          <meshBasicMaterial color={tierColor} transparent opacity={0.4} />
+        </mesh>
+      )}
     </group>
   );
 }

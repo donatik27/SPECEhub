@@ -5,15 +5,30 @@ import Link from 'next/link'
 import { Brain, TrendingUp, RefreshCw, Users, DollarSign } from 'lucide-react'
 import type { SmartMarketData } from '@/lib/smart-markets'
 
+// Format balance for better readability
+function formatBalance(balance: number): string {
+  if (balance >= 1000000) {
+    return `${(balance / 1000000).toFixed(1)}M`
+  } else if (balance >= 1000) {
+    return `${(balance / 1000).toFixed(1)}K`
+  } else {
+    return balance.toFixed(0)
+  }
+}
+
 export default function SmartMarketsPage() {
-  const [markets, setMarkets] = useState<SmartMarketData[]>([])
-  const [loading, setLoading] = useState(true)
+  const [pinnedMarkets, setPinnedMarkets] = useState<SmartMarketData[]>([])
+  const [dynamicMarkets, setDynamicMarkets] = useState<SmartMarketData[]>([])
+  const [loadingPinned, setLoadingPinned] = useState(true)
+  const [loadingDynamic, setLoadingDynamic] = useState(true)
   const [lastUpdate, setLastUpdate] = useState<string>('')
 
-  const fetchSmartMarkets = async () => {
+  const fetchAllMarkets = async () => {
     try {
-      setLoading(true)
+      setLoadingPinned(true)
+      setLoadingDynamic(true)
       
+      // For local dev without DB, fetch all markets at once (uses fallback)
       const response = await fetch('/api/smart-markets', {
         cache: 'no-cache'
       })
@@ -23,22 +38,85 @@ export default function SmartMarketsPage() {
       }
 
       const data = await response.json()
-      setMarkets(data)
+      
+      // Separate pinned and dynamic (if any)
+      const pinned = data.filter((m: any) => m.isPinned)
+      const dynamic = data.filter((m: any) => !m.isPinned)
+      
+      setPinnedMarkets(pinned)
+      setDynamicMarkets(dynamic)
       setLastUpdate(new Date().toISOString())
       
-      console.log(`✅ Loaded ${data.length} smart markets`)
+      console.log(`✅ Loaded ${data.length} markets (${pinned.length} pinned, ${dynamic.length} dynamic)`)
       
     } catch (error) {
       console.error('Failed to fetch smart markets:', error)
-      alert('Failed to load smart markets')
     } finally {
-      setLoading(false)
+      setLoadingPinned(false)
+      setLoadingDynamic(false)
     }
   }
 
   useEffect(() => {
-    fetchSmartMarkets()
+    // Load all markets at once (fallback will handle it)
+    fetchAllMarkets()
   }, [])
+
+  const markets = [...pinnedMarkets, ...dynamicMarkets]
+  const loading = loadingPinned && markets.length === 0
+
+  // Animated loading messages
+  const [loadingMessage, setLoadingMessage] = useState(0)
+  const loadingMessages = [
+    'Scanning blockchain for positions...',
+    'Analyzing S/A tier traders...',
+    'Computing smart scores...',
+    'Finding alpha markets...'
+  ]
+
+  useEffect(() => {
+    if (!loading) return
+    const interval = setInterval(() => {
+      setLoadingMessage((prev) => (prev + 1) % loadingMessages.length)
+    }, 1500)
+    return () => clearInterval(interval)
+  }, [loading])
+
+  // Inline alien loading (keeps sidebar visible)
+  if (loading && markets.length === 0) {
+    return (
+      <div className="p-8 max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex items-center gap-4 mb-3">
+            <div className="text-4xl">🧠</div>
+            <h1 className="text-2xl font-bold text-primary alien-glow tracking-wider">ALPHA_MARKETS.AI</h1>
+          </div>
+          <p className="text-muted-foreground font-mono text-sm">
+            &gt; ANALYZING WHERE S/A TIER TRADERS ARE POSITIONED...
+          </p>
+        </div>
+
+        {/* Loading Content */}
+        <div className="flex items-center justify-center min-h-[500px]">
+          <div className="text-center">
+            <div className="text-8xl mb-6 animate-bounce">👽</div>
+            <h2 className="text-2xl font-bold text-primary mb-4 alien-glow">
+              SEARCHING FOR ALPHA...
+            </h2>
+            <p className="text-muted-foreground font-mono text-sm mb-2">
+              &gt; {loadingMessages[loadingMessage]}
+            </p>
+            <div className="flex items-center justify-center gap-1 text-primary text-2xl">
+              <span className="animate-pulse" style={{animationDelay: '0ms'}}>.</span>
+              <span className="animate-pulse" style={{animationDelay: '200ms'}}>.</span>
+              <span className="animate-pulse" style={{animationDelay: '400ms'}}>.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -63,7 +141,7 @@ export default function SmartMarketsPage() {
           </div>
 
           <button
-            onClick={fetchSmartMarkets}
+            onClick={fetchAllMarkets}
             disabled={loading}
             className="px-6 py-3 bg-primary text-black font-bold pixel-border hover:bg-primary/80 transition-all disabled:opacity-50 flex items-center gap-3 text-sm uppercase tracking-wider"
           >
@@ -110,7 +188,8 @@ export default function SmartMarketsPage() {
 
       {/* Markets Grid */}
       <div className="space-y-4">
-        {markets.map((market, idx) => (
+        {/* PINNED MARKETS (TOP-5) */}
+        {pinnedMarkets.map((market, idx) => (
           <Link 
             key={market.marketId}
             href={`/markets/smart/${market.marketId}`}
@@ -219,6 +298,145 @@ export default function SmartMarketsPage() {
                           </span>
                           <span className="text-xs font-mono text-primary">
                             {Math.round(trader.rarityScore / 1000)}k
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </Link>
+        ))}
+
+        {/* SEARCHING FOR MORE ALPHA (loading dynamic) */}
+        {loadingDynamic && pinnedMarkets.length > 0 && (
+          <div className="bg-card pixel-border border-primary/30 p-12 text-center">
+            <div className="text-6xl mb-4 animate-bounce inline-block">👽</div>
+            <h3 className="text-xl font-bold text-primary mb-2 alien-glow">
+              SEARCHING FOR MORE ALPHA...
+            </h3>
+            <p className="text-muted-foreground font-mono text-sm mb-2">
+              &gt; Discovering new smart markets...
+            </p>
+            <div className="flex items-center justify-center gap-1 text-primary text-xl">
+              <span className="animate-pulse" style={{animationDelay: '0ms'}}>.</span>
+              <span className="animate-pulse" style={{animationDelay: '200ms'}}>.</span>
+              <span className="animate-pulse" style={{animationDelay: '400ms'}}>.</span>
+            </div>
+          </div>
+        )}
+
+        {/* DYNAMIC MARKETS (newly discovered) */}
+        {dynamicMarkets.map((market, idx) => (
+          <Link 
+            key={market.marketId}
+            href={`/markets/smart/${market.marketId}`}
+            className="block bg-card pixel-border border-primary/30 p-6 hover:border-primary transition-all group relative overflow-hidden"
+          >
+            {/* Rank badge */}
+            <div className="absolute top-3 left-3">
+              <span className="px-3 py-1 bg-primary text-black font-bold text-xs pixel-border">
+                #{String(pinnedMarkets.length + idx + 1).padStart(2, '0')}
+              </span>
+            </div>
+
+            {/* Smart Score badge */}
+            <div className="absolute top-3 right-3">
+              <div className="text-right">
+                <p className="text-xs font-mono text-primary mb-1">SMART_SCORE</p>
+                <p className="text-2xl font-bold text-primary font-mono">{Math.round(market.smartScore).toLocaleString()}</p>
+              </div>
+            </div>
+
+            <div className="mt-8">
+              {/* Question */}
+              <div className="flex items-start gap-3 mb-4">
+                <span className="text-3xl flex-shrink-0">🎯</span>
+                <h3 className="text-lg font-bold text-white group-hover:text-primary transition-colors">
+                  {market.question}
+                </h3>
+              </div>
+
+              {/* Stats */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                <div className="bg-black/40 pixel-border border-white/20 p-3">
+                  <p className="text-xs font-mono text-primary mb-1">S/A_TRADERS</p>
+                  <p className="text-xl font-bold text-white">{market.smartCount}</p>
+                </div>
+                <div className="bg-black/40 pixel-border border-white/20 p-3">
+                  <p className="text-xs font-mono text-primary mb-1">VOLUME</p>
+                  <p className="text-xl font-bold text-primary">${(market.volume / 1000).toFixed(0)}k</p>
+                </div>
+                <div className="bg-black/40 pixel-border border-white/20 p-3">
+                  <p className="text-xs font-mono text-primary mb-1">LIQUIDITY</p>
+                  <p className="text-xl font-bold text-white">${(market.liquidity / 1000).toFixed(0)}k</p>
+                </div>
+                <div className="bg-black/40 pixel-border border-white/20 p-3">
+                  <p className="text-xs font-mono text-primary mb-1">CATEGORY</p>
+                  <p className="text-sm font-bold text-white truncate">{market.category}</p>
+                </div>
+              </div>
+
+              {/* Tier Breakdown & Smart Traders */}
+              {market.topTraders && market.topTraders.length > 0 && (
+                <>
+                  {/* Tier composition stats */}
+                  <div className="bg-black/40 pixel-border border-primary/30 p-4 mb-3">
+                    <p className="text-xs font-mono text-primary mb-3 uppercase tracking-wider">
+                      📊 TIER_COMPOSITION (S=5pts, A=3pts, B=2pts, C=1pt):
+                    </p>
+                    <div className="flex gap-4">
+                      {['S', 'A', 'B', 'C'].map(tier => {
+                        const count = market.topTraders.filter((t: any) => t.tier === tier).length
+                        const points = count * (tier === 'S' ? 5 : tier === 'A' ? 3 : tier === 'B' ? 2 : 1)
+                        if (count === 0) return null
+                        return (
+                          <div key={tier} className="flex items-center gap-2">
+                            <span className={`px-2 py-1 text-sm font-bold pixel-border ${
+                              tier === 'S' ? 'bg-[#FFD700] text-black' :
+                              tier === 'A' ? 'bg-white text-black' :
+                              tier === 'B' ? 'bg-primary text-black' :
+                              'bg-gray-400 text-black'
+                            }`}>
+                              {tier}
+                            </span>
+                            <span className="text-white font-mono">
+                              ×{count} = {points}pts
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Top smart traders grid */}
+                  <div className="bg-black/40 pixel-border border-primary/30 p-4">
+                    <p className="text-xs font-mono text-primary mb-3 uppercase tracking-wider">
+                      🧠 TOP_SMART_TRADERS in this market:
+                    </p>
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+                      {market.topTraders.map((trader: any) => (
+                        <div 
+                          key={trader.address}
+                          className="flex items-center gap-2 bg-black pixel-border border-white/30 p-2 hover:border-primary transition-all"
+                        >
+                          <span className={`px-2 py-0.5 text-xs font-bold pixel-border ${
+                            trader.tier === 'S' ? 'bg-[#FFD700] text-black border-[#FFD700]' :
+                            trader.tier === 'A' ? 'bg-white text-black border-white' :
+                            trader.tier === 'B' ? 'bg-primary text-black border-primary' :
+                            'bg-gray-400 text-black border-gray-400'
+                          }`}>
+                            {trader.tier}
+                          </span>
+                          <span className="text-sm font-mono text-white">
+                            {trader.displayName.length > 12 
+                              ? `${trader.displayName.slice(0, 8)}...` 
+                              : trader.displayName
+                            }
+                          </span>
+                          <span className="text-xs font-mono text-primary">
+                            ({formatBalance(trader.balance || 0)})
                           </span>
                         </div>
                       ))}

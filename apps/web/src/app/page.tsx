@@ -65,15 +65,21 @@ export default function HomePage() {
       
       const sTierTraders = traders.filter(t => t.tier === 'S')
       
+      // Filter for traders with REAL avatars (media personalities)
+      // Exclude DiceBear generated avatars - only show traders with profile pictures
+      const tradersWithRealAvatars = sTierTraders.filter(t => 
+        t.avatar && !t.avatar.includes('dicebear.com')
+      )
+      
       setStats({
         totalTraders: traders.length,
         sTierTraders: sTierTraders.length,
         smartMarkets: 0 // Will update after smart markets fetch
       })
       
-      // Shuffle and pick random S-tier traders
-      const shuffled = [...sTierTraders].sort(() => Math.random() - 0.5)
-      setTopTraders(shuffled.slice(0, 5))
+      // Shuffle and pick random S-tier traders WITH REAL AVATARS
+      const shuffled = [...tradersWithRealAvatars].sort(() => Math.random() - 0.5)
+      setTopTraders(shuffled.slice(0, 10)) // More traders to fill the space
 
       // Fetch smart markets
       const marketsRes = await fetch('/api/smart-markets')
@@ -151,16 +157,106 @@ export default function HomePage() {
         </Link>
 
         <Link 
-          href="/health"
-          className="group bg-card pixel-border border-orange-500/40 p-6 hover:border-orange-500 transition-all hover:scale-105"
+          href="/map"
+          className="group bg-card pixel-border border-primary/40 p-6 hover:border-primary transition-all hover:scale-105 relative overflow-hidden bg-black/60"
         >
-          <div className="flex items-center justify-between mb-3">
-            <Activity className="h-8 w-8 text-orange-400" />
-            <ArrowRight className="h-5 w-5 text-orange-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+          {/* EPIC Animated Radar - LOWER POSITION */}
+          <div className="absolute bottom-0 right-0 flex items-center justify-center" style={{ width: '180px', height: '180px' }}>
+            <svg width="180" height="180" viewBox="0 0 200 200" className="absolute group-hover:scale-110 transition-transform duration-500">
+              {/* Outer glow effect */}
+              <defs>
+                <radialGradient id="radarGlow">
+                  <stop offset="0%" stopColor="#00ff00" stopOpacity="0.3" />
+                  <stop offset="100%" stopColor="#00ff00" stopOpacity="0" />
+                </radialGradient>
+                <filter id="glow">
+                  <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+                  <feMerge>
+                    <feMergeNode in="coloredBlur"/>
+                    <feMergeNode in="SourceGraphic"/>
+                  </feMerge>
+                </filter>
+              </defs>
+              
+              {/* Background glow */}
+              <circle cx="100" cy="100" r="80" fill="url(#radarGlow)" className="animate-pulse" />
+              
+              {/* Radar circles with glow */}
+              <circle cx="100" cy="100" r="70" fill="none" stroke="currentColor" strokeWidth="1" className="text-primary opacity-40" filter="url(#glow)" />
+              <circle cx="100" cy="100" r="50" fill="none" stroke="currentColor" strokeWidth="1" className="text-primary opacity-50" filter="url(#glow)" />
+              <circle cx="100" cy="100" r="30" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-primary opacity-60" filter="url(#glow)" />
+              <circle cx="100" cy="100" r="10" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary opacity-80" filter="url(#glow)" />
+              
+              {/* Crosshairs with glow */}
+              <line x1="100" y1="20" x2="100" y2="180" stroke="currentColor" strokeWidth="1" className="text-primary/40" filter="url(#glow)" />
+              <line x1="20" y1="100" x2="180" y2="100" stroke="currentColor" strokeWidth="1" className="text-primary/40" filter="url(#glow)" />
+              
+              {/* Diagonal lines */}
+              <line x1="40" y1="40" x2="160" y2="160" stroke="currentColor" strokeWidth="0.5" className="text-primary/20" />
+              <line x1="160" y1="40" x2="40" y2="160" stroke="currentColor" strokeWidth="0.5" className="text-primary/20" />
+              
+              {/* Rotating scanning beam with intense glow */}
+              <g style={{ transformOrigin: '100px 100px', animation: 'radarSpin 2.5s linear infinite' }}>
+                <path
+                  d="M 100 100 L 100 30 A 70 70 0 0 1 155 55 Z"
+                  fill="currentColor"
+                  className="text-primary opacity-50"
+                  filter="url(#glow)"
+                />
+                <line x1="100" y1="100" x2="100" y2="30" stroke="currentColor" strokeWidth="2" className="text-primary" filter="url(#glow)" />
+              </g>
+              
+              {/* Center pulse */}
+              <circle cx="100" cy="100" r="5" fill="currentColor" className="text-primary animate-ping" />
+              <circle cx="100" cy="100" r="3" fill="currentColor" className="text-primary" />
+              
+              {/* Animated trader dots - MORE VISIBLE */}
+              <g style={{ animation: 'blipPulse 2s ease-in-out infinite' }}>
+                <circle cx="130" cy="70" r="3" fill="currentColor" className="text-primary" filter="url(#glow)" />
+                <circle cx="130" cy="70" r="6" fill="none" stroke="currentColor" strokeWidth="1" className="text-primary opacity-50" />
+              </g>
+              <g style={{ animation: 'blipPulse 2s ease-in-out infinite', animationDelay: '0.5s' }}>
+                <circle cx="70" cy="80" r="3" fill="currentColor" className="text-primary" filter="url(#glow)" />
+                <circle cx="70" cy="80" r="6" fill="none" stroke="currentColor" strokeWidth="1" className="text-primary opacity-50" />
+              </g>
+              <g style={{ animation: 'blipPulse 2s ease-in-out infinite', animationDelay: '1s' }}>
+                <circle cx="120" cy="130" r="3" fill="currentColor" className="text-primary" filter="url(#glow)" />
+                <circle cx="120" cy="130" r="6" fill="none" stroke="currentColor" strokeWidth="1" className="text-primary opacity-50" />
+              </g>
+              <g style={{ animation: 'blipPulse 2s ease-in-out infinite', animationDelay: '1.5s' }}>
+                <circle cx="60" cy="120" r="3" fill="currentColor" className="text-primary" filter="url(#glow)" />
+                <circle cx="60" cy="120" r="6" fill="none" stroke="currentColor" strokeWidth="1" className="text-primary opacity-50" />
+              </g>
+            </svg>
           </div>
-          <h3 className="text-lg font-bold mb-1 text-orange-400">SYSTEM HEALTH</h3>
-          <p className="text-sm text-muted-foreground">&gt; System status</p>
+
+          <div className="flex items-center justify-between mb-3 relative z-10">
+            <div className="w-8 h-8 relative alien-glow">
+              <svg width="32" height="32" viewBox="0 0 32 32">
+                <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-primary" />
+                <circle cx="16" cy="16" r="10" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-primary" />
+                <circle cx="16" cy="16" r="6" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-primary" />
+                <circle cx="16" cy="16" r="2" fill="currentColor" className="text-primary animate-pulse" />
+                <line x1="16" y1="2" x2="16" y2="30" stroke="currentColor" strokeWidth="1" className="text-primary/50" />
+                <line x1="2" y1="16" x2="30" y2="16" stroke="currentColor" strokeWidth="1" className="text-primary/50" />
+              </svg>
+            </div>
+            <ArrowRight className="h-5 w-5 text-primary opacity-0 group-hover:opacity-100 transition-opacity alien-glow" />
+          </div>
+          <h3 className="text-lg font-bold mb-1 text-primary relative z-10 alien-glow">TRADER_RADAR</h3>
+          <p className="text-sm text-muted-foreground relative z-10">&gt; Geographic tracking</p>
         </Link>
+        
+        <style jsx>{`
+          @keyframes radarSpin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+          }
+          @keyframes blipPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+          }
+        `}</style>
       </div>
 
       {/* Stats Cards - WITHOUT Total Volume */}
@@ -229,25 +325,25 @@ export default function HomePage() {
                 </div>
               </div>
             ) : topTraders.length > 0 ? (
-              topTraders.slice(0, 3).map((trader) => (
+              topTraders.slice(0, 4).map((trader) => (
                 <Link
                   key={trader.address}
                   href={`/traders/${trader.address}`}
-                  className="flex items-center gap-3 p-3 bg-black/40 pixel-border border-white/20 hover:border-[#FFD700] transition-all group"
+                  className="flex items-center gap-3 p-2.5 bg-black/40 pixel-border border-white/20 hover:border-[#FFD700] transition-all group"
                 >
                   <img
                     src={trader.avatar}
                     alt={trader.displayName}
-                    className="w-12 h-12 rounded-full bg-secondary object-cover pixel-border border-[#FFD700]"
+                    className="w-10 h-10 rounded-full bg-secondary object-cover pixel-border border-[#FFD700]"
                     onError={(e) => {
                       e.currentTarget.src = 'https://api.dicebear.com/7.x/shapes/svg?seed=default'
                     }}
                   />
                   <div className="flex-1 min-w-0">
-                    <p className="font-bold text-white truncate">{trader.displayName}</p>
+                    <p className="font-bold text-white truncate text-sm">{trader.displayName}</p>
                     <p className="text-xs text-primary font-mono">SCORE: {Math.round(trader.rarityScore / 1000)}k</p>
                   </div>
-                  <span className="px-2 py-1 bg-[#FFD700] text-black text-xs font-bold pixel-border">
+                  <span className="px-2 py-0.5 bg-[#FFD700] text-black text-xs font-bold pixel-border">
                     S
                   </span>
                 </Link>
@@ -279,7 +375,7 @@ export default function HomePage() {
             </Link>
           </div>
           
-          <div className="space-y-3">
+          <div className="space-y-2">
             {loading ? (
               <div className="flex items-center justify-center h-32 text-muted-foreground">
                 <div className="text-center">
@@ -292,7 +388,7 @@ export default function HomePage() {
                 <Link
                   key={market.marketId}
                   href={`/markets/smart`}
-                  className="block p-4 bg-black/40 pixel-border border-white/20 hover:border-purple-500 transition-all group"
+                  className="block p-3 bg-black/40 pixel-border border-white/20 hover:border-purple-500 transition-all group"
                 >
                   <div className="flex items-start gap-3">
                     <span className="px-3 py-1 bg-purple-500 text-white text-xs font-bold pixel-border flex-shrink-0">
@@ -341,17 +437,18 @@ export default function HomePage() {
             <span className="ml-2 text-xs">✅</span>
           </div>
 
-          {/* Phase 2 - Current (Active) */}
+          {/* Phase 2 - Completed */}
           <div className="text-sm font-mono">
-            <span className="text-primary font-bold">PHASE_2: Main Features Launch</span>
-            <span className="ml-2 text-primary animate-pulse">...</span>
-            <span className="ml-2 text-xs text-muted-foreground">(Trader tracking, Smart Markets, On-chain data)</span>
+            <span className="text-primary line-through">PHASE_2: Main Features Launch</span>
+            <span className="ml-2 text-xs">✅</span>
+            <span className="ml-2 text-xs text-muted-foreground line-through">(Trader tracking, Smart Markets, On-chain data)</span>
           </div>
 
-          {/* Phase 3 - Upcoming */}
-          <div className="text-sm font-mono text-purple-400/70">
-            <span>PHASE_3: Advanced Analytics</span>
-            <span className="ml-2 text-xs text-muted-foreground">(Planning: Historical data, Performance charts)</span>
+          {/* Phase 3 - Current (Active) */}
+          <div className="text-sm font-mono">
+            <span className="text-purple-400 font-bold">PHASE_3: Global Trader Analytics</span>
+            <span className="ml-2 text-purple-400 animate-pulse">...</span>
+            <span className="ml-2 text-xs text-muted-foreground">(Deep analytics for every trader, comprehensive statistics)</span>
           </div>
 
           {/* Phase 4 - Future */}
@@ -359,20 +456,6 @@ export default function HomePage() {
             <span>PHASE_4: AI Predictions & Alerts</span>
             <span className="ml-2 text-xs text-muted-foreground">(Planning: Pattern recognition, Auto-discovery)</span>
           </div>
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between pt-4 border-t border-primary/20">
-          <div className="text-xs text-muted-foreground font-mono flex items-center gap-2">
-            <Sparkles className="h-3 w-3 text-primary" />
-            <span>Powered by <a href="https://polymarket.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Polymarket</a> data</span>
-          </div>
-          <Link 
-            href="/health"
-            className="text-xs bg-primary/20 hover:bg-primary/30 px-3 py-1 pixel-border border-primary/50 transition-colors font-mono"
-          >
-            CHECK_STATUS
-          </Link>
         </div>
       </div>
 

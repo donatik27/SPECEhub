@@ -26,6 +26,7 @@ const tierColors: Record<string, string> = {
   C: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
   D: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
   E: 'bg-slate-500/20 text-slate-400 border-slate-500/30',
+  X: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
 }
 
 export default function TradersPage() {
@@ -43,12 +44,14 @@ export default function TradersPage() {
     try {
       setLoading(true)
       
-      // Fetch from REAL Polymarket API
-      const { fetchLeaderboard, convertToTrader } = await import('@/lib/polymarket-api')
+      // Fetch from API route (server-side proxy to Polymarket)
+      const response = await fetch('/api/traders')
       
-      // Always fetch MONTHLY leaderboard (1mo)
-      const leaderboard = await fetchLeaderboard(1000, '1mo')
-      const tradersData = leaderboard.map(convertToTrader)
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
+      const tradersData = await response.json()
       
       setTraders(tradersData)
       setTotalTraders(tradersData.length)
@@ -58,7 +61,7 @@ export default function TradersPage() {
       
     } catch (error) {
       console.error('Failed to fetch traders:', error)
-      alert('Loading error')
+      alert('Loading error: ' + (error instanceof Error ? error.message : 'Unknown error'))
     } finally {
       setLoading(false)
     }
@@ -69,7 +72,11 @@ export default function TradersPage() {
   }, [])
 
   const filteredTraders = (traders || [])
-    .filter(t => filterTier === 'all' || t.tier === filterTier)
+    .filter(t => {
+      if (filterTier === 'all') return true
+      if (filterTier === 'X') return !!t.xUsername // Show only public traders with Twitter
+      return t.tier === filterTier
+    })
     .sort((a, b) => {
       if (sortBy === 'pnl') return b.estimatedPnL - a.estimatedPnL
       if (sortBy === 'winRate') return b.winRate - a.winRate
@@ -144,7 +151,7 @@ export default function TradersPage() {
         <div className="flex items-center gap-3">
           <span className="text-sm font-mono text-primary">TIER_FILTER:</span>
           <div className="flex gap-2">
-            {['all', 'S', 'A', 'B', 'C', 'D'].map((tier) => (
+            {['all', 'S', 'A', 'B', 'X'].map((tier) => (
               <button
                 key={tier}
                 onClick={() => setFilterTier(tier)}

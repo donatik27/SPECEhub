@@ -8,6 +8,8 @@ import Link from 'next/link'
 interface Market {
   id: string
   question: string
+  slug: string
+  negRiskMarketID?: string
   category: string
   volume: number
   liquidity: number
@@ -27,33 +29,245 @@ interface SmartTrader {
   amount: number // Amount bet
 }
 
+interface MultiOutcomePosition {
+  marketId: string
+  outcomeTitle: string
+  currentPrice: number
+  smartPositions: Array<{
+    traderAddress: string
+    traderName: string
+    tier: string
+    position: string
+    shares: number
+    entryPrice: number
+  }>
+  totalSmartShares: number
+  smartTraderCount: number
+}
+
+// Smart function to extract key info from outcome titles
+function extractOutcomeShortName(outcomeTitle: string, allOutcomes: MultiOutcomePosition[]): string {
+  // Try to extract name after "nominate" or "elect" or "appoint"
+  const nominateMatch = outcomeTitle.match(/(?:nominate|elect|appoint)\s+(.+?)\s+(?:as|for|to)/i)
+  if (nominateMatch) {
+    return nominateMatch[1].trim()
+  }
+
+  // Try to extract team/entity name before "win" or "make"
+  const winMatch = outcomeTitle.match(/Will\s+(?:the\s+)?(.+?)\s+(?:win|make|reach|qualify)/i)
+  if (winMatch) {
+    return winMatch[1].trim()
+  }
+
+  // Try to extract date ranges (e.g., "by June 30, 2026")
+  const dateMatch = outcomeTitle.match(/(?:by|in|before)\s+([\w\s,]+\d{4})/i)
+  if (dateMatch) {
+    return dateMatch[1].trim()
+  }
+
+  // Try to extract numbers or ranges (e.g., "250,000-500,000")
+  const numberMatch = outcomeTitle.match(/(\d[\d,\-\.]+(?:\s*(?:million|billion|thousand|[KMB]))?)/i)
+  if (numberMatch) {
+    return numberMatch[1].trim()
+  }
+
+  // Fallback: Find common prefix/suffix and remove it
+  if (allOutcomes.length > 1) {
+    const titles = allOutcomes.map(o => o.outcomeTitle)
+    
+    // Find common prefix
+    let commonPrefix = titles[0]
+    for (const title of titles) {
+      while (!title.startsWith(commonPrefix) && commonPrefix.length > 0) {
+        commonPrefix = commonPrefix.slice(0, -1)
+      }
+    }
+    
+    // Find common suffix
+    let commonSuffix = titles[0]
+    for (const title of titles) {
+      while (!title.endsWith(commonSuffix) && commonSuffix.length > 0) {
+        commonSuffix = commonSuffix.slice(1)
+      }
+    }
+    
+    // Remove common parts
+    let shortName = outcomeTitle
+    if (commonPrefix.length > 10) {
+      shortName = shortName.replace(commonPrefix, '').trim()
+    }
+    if (commonSuffix.length > 10) {
+      shortName = shortName.replace(new RegExp(commonSuffix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$'), '').trim()
+    }
+    
+    if (shortName.length > 0 && shortName.length < outcomeTitle.length - 10) {
+      return shortName
+    }
+  }
+
+  // Final fallback: return first 50 chars
+  return outcomeTitle.length > 50 ? outcomeTitle.substring(0, 47) + '...' : outcomeTitle
+}
+
 export default function SmartMarketDetailPage() {
   const params = useParams()
   const marketId = params.marketId as string
 
   const [market, setMarket] = useState<Market | null>(null)
+  const [eventSlug, setEventSlug] = useState<string | null>(null)
   const [smartTraders, setSmartTraders] = useState<SmartTrader[]>([])
+  const [multiOutcomePositions, setMultiOutcomePositions] = useState<MultiOutcomePosition[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetchMarketDetails()
   }, [marketId])
 
+  // Auto-refresh prices every 15 seconds to stay in sync with Polymarket
+  useEffect(() => {
+    if (!marketId || !market) return
+    
+    const refreshPrices = async () => {
+      try {
+        // Update main market prices via our API
+        const priceRes = await fetch(`/api/market-price?marketId=${marketId}`)
+        if (priceRes.ok) {
+          const priceData = await priceRes.json()
+          
+          setMarket(prev => prev ? {
+            ...prev,
+            outcomes: priceData.outcomes,
+            outcomePrices: priceData.outcomePrices
+          } : null)
+          
+          console.log(`🔄 Prices updated: ${priceData.outcomePrices[0]} / ${priceData.outcomePrices[1]} (${(parseFloat(priceData.outcomePrices[0]) * 100).toFixed(1)}% / ${(parseFloat(priceData.outcomePrices[1]) * 100).toFixed(1)}%)`)
+        }
+        
+        // Update multi-outcome prices if present
+        const currentPositions = multiOutcomePositions
+        if (currentPositions.length > 0) {
+          Promise.all(
+            currentPositions.map(async (position) => {
+              try {
+                const posRes = await fetch(`/api/market-price?marketId=${position.marketId}`)
+                if (posRes.ok) {
+                  const posData = await posRes.json()
+                  // Assume "Yes" is index 0
+                  return { ...position, currentPrice: parseFloat(posData.outcomePrices[0]) }
+                }
+              } catch (e) {
+                // Silent fail, keep old price
+              }
+              return position
+            })
+          ).then(updatedPositions => {
+            setMultiOutcomePositions(updatedPositions)
+            console.log(`🔄 Updated ${updatedPositions.length} multi-outcome prices`)
+          })
+        }
+      } catch (e) {
+        console.warn('Failed to refresh prices:', e)
+      }
+    }
+    
+    const interval = setInterval(refreshPrices, 15000) // Every 15 seconds
+    return () => clearInterval(interval)
+  }, [marketId, market])
+
   const fetchMarketDetails = async () => {
     try {
       setLoading(true)
 
-      // 1. Fetch market details
-      const marketsRes = await fetch('/api/markets')
-      const allMarkets = await marketsRes.json()
-      const foundMarket = allMarkets.find((m: any) => m.id === marketId)
+      // 1. First try to find market in smart markets (has correct data)
+      const smartMarketsRes = await fetch('/api/smart-markets')
+      const smartMarkets = await smartMarketsRes.json()
+      const smartMarket = smartMarkets.find((m: any) => m.marketId === marketId)
+      
+      let foundMarket = null
+      
+      if (smartMarket) {
+        // Use eventSlug from database (fetched from Polymarket API by Worker)
+        const dbEventSlug = (smartMarket as any).eventSlug
+        
+        // Fetch FRESH prices via our API (avoids CORS issues)
+        let outcomes = ['Yes', 'No']
+        let outcomePrices = ['0.5', '0.5']
+        
+        try {
+          const priceRes = await fetch(`/api/market-price?marketId=${marketId}`)
+          if (priceRes.ok) {
+            const priceData = await priceRes.json()
+            outcomes = priceData.outcomes
+            outcomePrices = priceData.outcomePrices
+            console.log(`✅ Fresh prices: ${outcomePrices.join(' / ')} (${(parseFloat(outcomePrices[0]) * 100).toFixed(1)}% / ${(parseFloat(outcomePrices[1]) * 100).toFixed(1)}%)`)
+          }
+        } catch (e) {
+          console.warn('Failed to fetch fresh prices, using defaults')
+        }
+        
+        // Use smart market data (has all needed fields)
+        foundMarket = {
+          id: smartMarket.marketId,
+          question: smartMarket.question,
+          slug: (smartMarket as any).slug || null,
+          category: smartMarket.category,
+          volume: smartMarket.volume,
+          liquidity: 0,
+          outcomes,
+          outcomePrices,
+          endDate: smartMarket.endDate
+        }
+        
+        // Set eventSlug directly from database
+        if (dbEventSlug) {
+          setEventSlug(dbEventSlug)
+          console.log(`✅ Event slug from DB: ${dbEventSlug}`)
+        }
+      } else {
+        // Fallback: fetch from markets API
+        const marketsRes = await fetch('/api/markets')
+        const allMarkets = await marketsRes.json()
+        foundMarket = allMarkets.find((m: any) => m.id === marketId)
+      }
 
       if (!foundMarket) {
-        console.error('Market not found')
+        console.error('Market not found:', marketId)
         return
       }
 
       setMarket(foundMarket)
+
+      // Only fetch event slug if not already set from database
+      let finalEventSlug = eventSlug
+      if (!finalEventSlug) {
+        try {
+          const eventRes = await fetch(`/api/event-by-market?marketId=${marketId}&question=${encodeURIComponent(foundMarket.question)}`)
+          if (eventRes.ok) {
+            const data = await eventRes.json()
+            finalEventSlug = data?.eventSlug || null
+            setEventSlug(finalEventSlug)
+            console.log(`Event slug from API fallback: ${finalEventSlug}`)
+          }
+        } catch (error) {
+          console.error('Failed to fetch event slug:', error)
+        }
+      }
+
+      // Fetch multi-outcome positions if we have an event slug
+      if (finalEventSlug) {
+        try {
+          const multiRes = await fetch(`/api/multi-outcome-positions?eventSlug=${finalEventSlug}`)
+          if (multiRes.ok) {
+            const data = await multiRes.json()
+            if (data.outcomes && data.outcomes.length > 0) {
+              setMultiOutcomePositions(data.outcomes)
+              console.log(`✅ Loaded ${data.outcomes.length} multi-outcome positions`)
+            }
+          }
+        } catch (error) {
+          console.error('Failed to fetch multi-outcome positions:', error)
+        }
+      }
 
       // 2. Fetch REAL smart traders from smart-markets API
       try {
@@ -170,7 +384,7 @@ export default function SmartMarketDetailPage() {
           
           {/* Polymarket Link */}
           <a
-            href={`https://polymarket.com/event/${marketId}?via=01k`}
+            href={`/api/redirect-market/${marketId}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 hover:text-purple-300 px-4 py-2 pixel-border border-purple-500/50 transition-all font-bold text-sm whitespace-nowrap"
@@ -181,69 +395,193 @@ export default function SmartMarketDetailPage() {
         </div>
       </div>
 
-      {/* Outcomes & Prices */}
-      <div className="bg-card pixel-border border-primary/40 p-6 mb-6">
-        <div className="flex items-center gap-3 mb-4">
-          <Activity className="h-6 w-6 text-primary alien-glow" />
-          <h2 className="text-2xl font-bold text-primary">CURRENT_ODDS</h2>
-        </div>
+      {/* Smart Money Outcomes - Multi-Outcome Markets */}
+      {multiOutcomePositions.length > 0 ? (
+        <div className="bg-card pixel-border border-[#FFD700]/40 p-6 mb-6">
+          <div className="flex items-center gap-3 mb-4">
+            <Target className="h-6 w-6 text-[#FFD700] alien-glow" />
+            <h2 className="text-2xl font-bold text-[#FFD700]">⭐ TOP_TRADER_POSITIONS</h2>
+            <span className="text-xs text-muted-foreground">
+              (ranked by S-tier conviction)
+            </span>
+            <span className="flex items-center gap-1 text-xs text-[#FFD700]/70 font-mono ml-auto">
+              <span className="w-2 h-2 bg-[#FFD700] rounded-full animate-pulse"></span>
+              LIVE
+            </span>
+          </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {(Array.isArray(market.outcomes) ? market.outcomes : ['YES', 'NO']).map((outcome, idx) => {
-            let price = 0.5
-            if (market.outcomePrices?.[idx]) {
-              const parsed = parseFloat(market.outcomePrices[idx])
-              price = isNaN(parsed) ? 0.5 : parsed
-            }
-            const percentage = (price * 100).toFixed(1)
-            const isYes = outcome.toLowerCase() === 'yes'
-            const isNo = outcome.toLowerCase() === 'no'
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {multiOutcomePositions.map((outcome, idx) => {
+              const percentage = (outcome.currentPrice * 100).toFixed(1)
+              const totalSharesK = (outcome.totalSmartShares / 1000).toFixed(1)
+              const shortName = extractOutcomeShortName(outcome.outcomeTitle, multiOutcomePositions)
+              const isTopPick = idx === 0 // First one has most S-tier traders
 
-            return (
-              <div
-                key={idx}
-                className={`bg-black/40 pixel-border p-6 hover:scale-105 transition-all ${
-                  isYes ? 'border-green-500/50 hover:border-green-500' :
-                  isNo ? 'border-red-500/50 hover:border-red-500' :
-                  'border-white/20 hover:border-white/50'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className={`text-lg font-bold ${
-                    isYes ? 'text-green-500' :
-                    isNo ? 'text-red-500' :
-                    'text-white'
-                  }`}>
-                    {outcome}
-                  </h3>
-                  <span className="text-xs text-muted-foreground">#{idx + 1}</span>
-                </div>
+              // Use redirect endpoint to always get correct URL
+              const polymarketUrl = `/api/redirect-market/${marketId}`
 
-                <div className="mb-3">
-                  <div className="text-4xl font-bold text-white mb-1">
-                    {percentage}¢
+              return (
+                <a
+                  key={idx}
+                  href={polymarketUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`
+                    bg-black/40 pixel-border p-6 transition-all group relative
+                    block cursor-pointer hover:scale-[1.02]
+                    ${isTopPick 
+                      ? 'border-[#FFD700] shadow-lg shadow-[#FFD700]/20 ring-2 ring-[#FFD700]/30' 
+                      : 'border-[#FFD700]/30 hover:border-[#FFD700]'
+                    }
+                  `}
+                >
+                  {/* TOP PICK Badge */}
+                  {isTopPick && (
+                    <div className="absolute -top-3 left-4 bg-[#FFD700] text-black px-3 py-1 text-xs font-bold pixel-border flex items-center gap-1">
+                      <span>🏆</span>
+                      <span>TOP_PICK</span>
+                    </div>
+                  )}
+                  
+                  <div className="flex items-start justify-between mb-4">
+                    <h3 
+                      className={`
+                        text-lg font-bold transition-colors flex-1 pr-4
+                        ${isTopPick ? 'text-[#FFD700]' : 'text-white group-hover:text-[#FFD700]'}
+                      `}
+                      title={outcome.outcomeTitle}
+                    >
+                      {shortName}
+                    </h3>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">#{idx + 1}</span>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    ${(price * 1).toFixed(2)} per share
+
+                  <div className="grid grid-cols-3 gap-4 mb-4">
+                    <div>
+                      <div className="text-2xl font-bold text-white mb-1">
+                        {percentage}¢
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Current Price
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold text-[#FFD700] mb-1">
+                        {outcome.smartTraderCount}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        S-Tier Traders
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold text-primary mb-1">
+                        {totalSharesK}K
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Total Shares
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div className="w-full bg-black/60 h-2 pixel-border border-white/10 overflow-hidden mb-3">
+                    <div 
+                      className="h-full bg-gradient-to-r from-[#FFD700] to-primary"
+                      style={{ width: `${percentage}%` }}
+                    />
+                  </div>
+
+                  {/* Top traders preview */}
+                  <div className="flex -space-x-2">
+                    {outcome.smartPositions.slice(0, 5).map((pos, i) => (
+                      <div
+                        key={i}
+                        className="w-8 h-8 rounded pixel-border border-[#FFD700] bg-black flex items-center justify-center text-xs font-bold text-[#FFD700]"
+                        title={`${pos.traderName}: ${(pos.shares / 1000).toFixed(1)}K shares`}
+                      >
+                        {pos.tier}
+                      </div>
+                    ))}
+                    {outcome.smartTraderCount > 5 && (
+                      <div className="w-8 h-8 rounded pixel-border border-white/30 bg-black/60 flex items-center justify-center text-xs text-white/60">
+                        +{outcome.smartTraderCount - 5}
+                      </div>
+                    )}
+                  </div>
+                </a>
+              )
+            })}
+          </div>
+        </div>
+      ) : (
+        // Standard outcomes view for non-multi-outcome markets
+        <div className="bg-card pixel-border border-primary/40 p-6 mb-6">
+          <div className="flex items-center gap-3 mb-4">
+            <Activity className="h-6 w-6 text-primary alien-glow" />
+            <h2 className="text-2xl font-bold text-primary">CURRENT_ODDS</h2>
+            <span className="flex items-center gap-1 text-xs text-primary/70 font-mono">
+              <span className="w-2 h-2 bg-primary rounded-full animate-pulse"></span>
+              LIVE
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {(Array.isArray(market.outcomes) ? market.outcomes : ['YES', 'NO']).map((outcome, idx) => {
+              let price = 0.5
+              if (market.outcomePrices?.[idx]) {
+                const parsed = parseFloat(market.outcomePrices[idx])
+                price = isNaN(parsed) ? 0.5 : parsed
+              }
+              const percentage = (price * 100).toFixed(1)
+              const isYes = outcome.toLowerCase() === 'yes'
+              const isNo = outcome.toLowerCase() === 'no'
+
+              return (
+                <div
+                  key={idx}
+                  className={`bg-black/40 pixel-border p-6 hover:scale-105 transition-all ${
+                    isYes ? 'border-green-500/50 hover:border-green-500' :
+                    isNo ? 'border-red-500/50 hover:border-red-500' :
+                    'border-white/20 hover:border-white/50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className={`text-lg font-bold ${
+                      isYes ? 'text-green-500' :
+                      isNo ? 'text-red-500' :
+                      'text-white'
+                    }`}>
+                      {outcome}
+                    </h3>
+                    <span className="text-xs text-muted-foreground">#{idx + 1}</span>
+                  </div>
+
+                  <div className="mb-3">
+                    <div className="text-4xl font-bold text-white mb-1">
+                      {percentage}¢
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      ${(price * 1).toFixed(2)} per share
+                    </div>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div className="w-full bg-black/60 h-2 pixel-border border-white/10 overflow-hidden">
+                    <div 
+                      className={`h-full ${
+                        isYes ? 'bg-green-500' :
+                        isNo ? 'bg-red-500' :
+                        'bg-primary'
+                      }`}
+                      style={{ width: `${percentage}%` }}
+                    />
                   </div>
                 </div>
-
-                {/* Progress bar */}
-                <div className="w-full bg-black/60 h-2 pixel-border border-white/10 overflow-hidden">
-                  <div 
-                    className={`h-full ${
-                      isYes ? 'bg-green-500' :
-                      isNo ? 'bg-red-500' :
-                      'bg-primary'
-                    }`}
-                    style={{ width: `${percentage}%` }}
-                  />
-                </div>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Smart Money Positions */}
       <div className="bg-card pixel-border border-[#FFD700]/40 p-6">
@@ -251,11 +589,88 @@ export default function SmartMarketDetailPage() {
           <Users className="h-6 w-6 text-[#FFD700] alien-glow" />
           <h2 className="text-2xl font-bold text-[#FFD700]">SMART_MONEY_POSITIONS</h2>
           <span className="text-muted-foreground text-sm">
-            ({smartTraders.length} S/A traders)
+            {multiOutcomePositions.length > 0 
+              ? `(${multiOutcomePositions.reduce((sum, o) => sum + o.smartTraderCount, 0)} S-tier traders across ${multiOutcomePositions.length} outcomes)`
+              : `(${smartTraders.length} S/A traders)`
+            }
           </span>
         </div>
 
-        {smartTraders.length > 0 ? (
+        {multiOutcomePositions.length > 0 ? (
+          // Multi-outcome detailed view
+          <div className="space-y-6">
+            {multiOutcomePositions.map((outcome, outcomeIdx) => {
+              const shortName = extractOutcomeShortName(outcome.outcomeTitle, multiOutcomePositions)
+              
+              return (
+              <div key={outcomeIdx} className="bg-black/20 pixel-border border-[#FFD700]/20 p-4">
+                <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/10">
+                  <h3 
+                    className="text-lg font-bold text-[#FFD700]"
+                    title={outcome.outcomeTitle}
+                  >
+                    {shortName}
+                  </h3>
+                  <div className="flex items-center gap-4 text-sm">
+                    <span className="text-white">
+                      {(outcome.currentPrice * 100).toFixed(1)}¢
+                    </span>
+                    <span className="text-primary">
+                      {(outcome.totalSmartShares / 1000).toFixed(1)}K shares
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {outcome.smartPositions.map((pos, posIdx) => (
+                    <Link
+                      key={posIdx}
+                      href={`/traders/${pos.traderAddress}`}
+                      className="block bg-black/40 pixel-border border-white/10 p-3 hover:border-[#FFD700] transition-all group"
+                    >
+                      <div className="flex items-center gap-3">
+                        {/* Tier Badge */}
+                        <div 
+                          className="w-10 h-10 pixel-border flex items-center justify-center text-black font-bold flex-shrink-0"
+                          style={{ backgroundColor: '#FFD700' }}
+                        >
+                          {pos.tier}
+                        </div>
+
+                        {/* Trader Info */}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-white group-hover:text-[#FFD700] transition-colors truncate">
+                            {pos.traderName}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {pos.traderAddress.slice(0, 10)}...{pos.traderAddress.slice(-8)}
+                          </p>
+                        </div>
+
+                        {/* Position */}
+                        <div className="text-right flex-shrink-0">
+                          <div className="mb-1">
+                            <span className={`px-2 py-1 pixel-border font-bold text-xs ${
+                              pos.position === 'YES' ? 'bg-green-500 text-black' : 'bg-red-500 text-white'
+                            }`}>
+                              {pos.position}
+                            </span>
+                          </div>
+                          <div className="text-sm font-bold text-white">
+                            {(pos.shares / 1000).toFixed(1)}K shares
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            @ {(pos.entryPrice * 100).toFixed(1)}¢
+                          </div>
+                        </div>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )})}
+          </div>
+        ) : smartTraders.length > 0 ? (
           <div className="space-y-4">
             {smartTraders.map((trader, idx) => {
               const tierColor = trader.tier === 'S' ? '#FFD700' : '#00ff00'

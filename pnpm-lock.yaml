@@ -78,6 +78,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@polymarket/database':
+        specifier: workspace:*
+        version: link:../../packages/database
       '@polymarket/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -190,6 +193,9 @@ importers:
       pino-pretty:
         specifier: ^10.3.1
         version: 10.3.1
+      viem:
+        specifier: ^2.21.54
+        version: 2.44.2(typescript@5.9.3)
     devDependencies:
       '@types/node':
         specifier: ^20.10.6

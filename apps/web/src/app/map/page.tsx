@@ -90,33 +90,32 @@ export default function MapPage() {
     try {
       setLoading(true)
       
-      // 1. Fetch traders
-      const tradersRes = await fetch('/api/traders')
-      const allTraders: Trader[] = await tradersRes.json()
+      // Fetch ONLY public traders with real geolocations
+      const tradersRes = await fetch('/api/traders-with-location')
+      const publicTraders: any[] = await tradersRes.json()
       
-      // 2. Filter S/A/B traders
-      const smartTraders = allTraders.filter(t => ['S', 'A', 'B'].includes(t.tier))
+      console.log(`✅ Loaded ${publicTraders.length} public traders with geolocations`)
       
-      // 3. Map traders to locations (using CRYPTO as fallback for faster loading)
-      const tradersWithLocations: TraderMarker[] = smartTraders.slice(0, 100).map((trader) => {
-        // Special location for RN1 -> Taiwan (Taipei)
-        let location
-        if (trader.displayName === 'RN1' || trader.address.toLowerCase().includes('rn1')) {
-          location = getTraderLocation([{ question: 'TAIPEI TAIWAN' }])
-        } else {
-          // Get random location for now (smart markets takes too long to load)
-          location = getTraderLocation([{ question: 'CRYPTO' }])
+      // Map public traders with real locations
+      const tradersWithLocations: TraderMarker[] = publicTraders.map((pubTrader) => {
+        const trader: Trader = {
+          address: pubTrader.address,
+          displayName: pubTrader.displayName || 'Unknown',
+          tier: pubTrader.tier || 'S',
+          rarityScore: pubTrader.rarityScore || 0,
+          avatar: pubTrader.profilePicture || `https://api.dicebear.com/7.x/shapes/svg?seed=${pubTrader.address}`,
+          estimatedPnL: Number(pubTrader.totalPnl) || 0,
         }
         
         // Convert lat/lng to screen coordinates
-        const x = ((location.lng + 180) / 360) * 100
-        const y = ((90 - location.lat) / 180) * 100
+        const x = ((pubTrader.longitude + 180) / 360) * 100
+        const y = ((90 - pubTrader.latitude) / 180) * 100
         
         return {
           trader,
-          lat: location.lat,
-          lng: location.lng,
-          region: location.region,
+          lat: pubTrader.latitude,
+          lng: pubTrader.longitude,
+          region: pubTrader.country || 'Unknown',
           x,
           y
         }
@@ -125,13 +124,13 @@ export default function MapPage() {
       setTraders(tradersWithLocations)
       
       setStats({
-        totalTraders: allTraders.length,
-        sTier: allTraders.filter(t => t.tier === 'S').length,
-        aTier: allTraders.filter(t => t.tier === 'A').length,
-        bTier: allTraders.filter(t => t.tier === 'B').length
+        totalTraders: publicTraders.length,
+        sTier: publicTraders.filter(t => t.tier === 'S').length,
+        aTier: publicTraders.filter(t => t.tier === 'A').length,
+        bTier: publicTraders.filter(t => t.tier === 'B').length
       })
       
-      console.log(`✅ Mapped ${tradersWithLocations.length} traders to locations`)
+      console.log(`✅ Mapped ${tradersWithLocations.length} PUBLIC traders to real locations`)
       
     } catch (error) {
       console.error('Failed to fetch data:', error)
@@ -215,7 +214,8 @@ export default function MapPage() {
         {hoveredTrader && (
           <Link 
             href={`/traders/${hoveredTrader.address}`}
-            className="absolute top-4 right-4 bg-black/95 pixel-border border-primary/50 p-4 z-30 min-w-[200px] hover:bg-black hover:border-primary transition-all cursor-pointer"
+            className="absolute top-4 right-4 bg-black pixel-border border-primary/50 p-4 z-50 min-w-[200px] hover:border-primary transition-all cursor-pointer"
+            style={{ backgroundColor: '#000000', opacity: 1 }}
           >
             <div className="flex items-center gap-3 mb-2">
               <img 
@@ -301,36 +301,80 @@ export default function MapPage() {
           </div>
         </div>
 
-        {/* Top Traders */}
+        {/* Top Traders - Featured */}
         <div className="bg-card pixel-border border-primary/40 p-6">
           <h2 className="text-lg font-bold text-primary mb-4">
             &gt; TOP_MAPPED_TRADERS:
           </h2>
           <div className="space-y-2 max-h-[400px] overflow-y-auto">
-            {traders.slice(0, 10).map((marker) => (
-              <div
-                key={marker.trader.address}
-                className="flex items-center justify-between p-2 bg-black/40 pixel-border border-white/20 hover:border-primary transition-colors cursor-pointer"
-              >
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`px-2 py-1 text-xs font-bold pixel-border ${
-                      marker.trader.tier === 'S'
-                        ? 'bg-[#FFD700] text-black'
-                        : marker.trader.tier === 'A'
-                        ? 'bg-white text-black'
-                        : 'bg-primary text-black'
-                    }`}
-                  >
-                    {marker.trader.tier}
-                  </span>
-                  <span className="text-sm text-white truncate max-w-[150px]">
-                    {marker.trader.displayName}
-                  </span>
-                </div>
-                <span className="text-xs text-muted-foreground">{marker.region}</span>
-              </div>
-            ))}
+            {(() => {
+              // Featured traders to highlight
+              const featuredNames = [
+                'HolyMoses7', 'holy_moses7', 'Moses',
+                'betwick', 'Betwick',
+                'ImJustKen',
+                'Dropper',
+                'ProfessionalPunter',
+                'FireKevinPatullo',
+                'scottilicious'
+              ].map(n => n.toLowerCase())
+              
+              // Find featured traders first
+              const featured = traders.filter(t => 
+                featuredNames.some(fn => t.trader.displayName.toLowerCase().includes(fn))
+              )
+              
+              // Then add other top traders
+              const others = traders.filter(t => 
+                !featuredNames.some(fn => t.trader.displayName.toLowerCase().includes(fn))
+              ).slice(0, Math.max(0, 10 - featured.length))
+              
+              const displayTraders = [...featured, ...others].slice(0, 10)
+              
+              return displayTraders.map((marker) => (
+                <Link
+                  key={marker.trader.address}
+                  href={`/traders/${marker.trader.address}`}
+                  className="flex items-center justify-between p-2 bg-black/40 pixel-border border-white/20 hover:border-primary transition-colors cursor-pointer group"
+                >
+                  <div className="flex items-center gap-3">
+                    <img 
+                      src={marker.trader.avatar} 
+                      alt={marker.trader.displayName}
+                      className="w-10 h-10 rounded pixel-border"
+                      style={{
+                        borderWidth: '2px',
+                        borderColor: marker.trader.tier === 'S' ? '#FFD700' : 
+                                   marker.trader.tier === 'A' ? '#ffffff' : 
+                                   '#00ff00'
+                      }}
+                      onError={(e) => {
+                        e.currentTarget.src = `https://api.dicebear.com/7.x/shapes/svg?seed=${marker.trader.address}`
+                      }}
+                    />
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`px-2 py-0.5 text-xs font-bold pixel-border ${
+                            marker.trader.tier === 'S'
+                              ? 'bg-[#FFD700] text-black'
+                              : marker.trader.tier === 'A'
+                              ? 'bg-white text-black'
+                              : 'bg-primary text-black'
+                          }`}
+                        >
+                          {marker.trader.tier}
+                        </span>
+                        <span className="text-sm text-white truncate max-w-[120px] group-hover:text-primary transition-colors">
+                          {marker.trader.displayName}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <span className="text-xs text-muted-foreground">{marker.region}</span>
+                </Link>
+              ))
+            })()}
           </div>
         </div>
       </div>
@@ -342,14 +386,24 @@ export default function MapPage() {
         </h2>
         <div className="space-y-2 text-sm text-muted-foreground">
           <p>• 🌍 Interactive 3D Earth (Three.js/WebGL)</p>
-          <p>• 🎯 Trader locations based on their markets</p>
-          <p>• 🇺🇸 US markets (NFL, Trump, etc.) → USA placement</p>
-          <p>• 🇪🇺 European events → Europe placement</p>
-          <p>• 🌏 Asia/Middle East (Iran, China) → Regional placement</p>
-          <p>• 💰 Crypto/General → Singapore/Global hubs</p>
+          <p>• 📍 <span className="text-green-500 font-bold">REAL TRADER LOCATIONS</span> - These are actual geographic locations of public traders</p>
+          <p>• 🔓 <span className="text-primary font-bold">100% PUBLIC DATA</span> - All information is publicly available on Polymarket and Twitter/X</p>
+          <p>• 🐦 Based on verified Twitter/X profiles with public location data</p>
+          <p>• ✅ <span className="text-white font-bold">VERIFIED REAL DATA</span> - Not simulated or generated. These traders really are in these regions</p>
+          <p>• 🎯 {traders.length} public traders mapped across {Object.keys(
+              traders.reduce((acc, t) => {
+                acc[t.region] = true
+                return acc
+              }, {} as Record<string, boolean>)
+            ).length} countries</p>
+          <p>• 🖼️ Hover over avatars to see trader details</p>
           <p className="text-primary mt-4">• 🟡 S-tier | ⚪ A-tier | 🟢 B-tier traders</p>
-          <p className="text-xs text-muted-foreground mt-4 italic">
-            &gt; Drag to rotate • Scroll to zoom • Hover over markers
+          <p className="text-xs text-white/70 mt-4 bg-primary/10 p-2 pixel-border border-primary/30">
+            ⚠️ All locations are sourced from publicly shared information by traders on their social media profiles. 
+            This data represents real geographic distribution of the Polymarket trader community.
+          </p>
+          <p className="text-xs text-muted-foreground mt-2 italic">
+            &gt; Drag to rotate • Scroll to zoom • Click markers to view profile
           </p>
         </div>
       </div>

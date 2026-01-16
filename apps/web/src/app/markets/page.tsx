@@ -14,6 +14,8 @@ interface Market {
   closed: boolean
   outcomes: string
   outcomePrices: string
+  slug?: string
+  eventSlug?: string
 }
 
 export default function MarketsPage() {
@@ -27,8 +29,8 @@ export default function MarketsPage() {
     try {
       setLoading(true)
       
-      // Fetch from our API route (avoids CORS issues)
-      const response = await fetch('/api/markets', {
+      // Fetch TOP 100 markets by volume from Polymarket
+      const response = await fetch('/api/markets?limit=100', {
         cache: 'no-cache'
       })
       
@@ -87,8 +89,8 @@ export default function MarketsPage() {
         <div className="flex items-center justify-between">
           <div className="relative">
             <div className="flex items-center gap-4 mb-3">
-              <div className="text-4xl">🎲</div>
-              <h1 className="text-2xl font-bold text-primary alien-glow tracking-wider">MARKETS.DB</h1>
+              <div className="text-4xl">🔥</div>
+              <h1 className="text-2xl font-bold text-primary alien-glow tracking-wider">HOT_MARKETS</h1>
               {loading && <span className="text-primary animate-pulse">█</span>}
             </div>
             <p className="text-muted-foreground font-mono text-sm">
@@ -156,11 +158,18 @@ export default function MarketsPage() {
               </tr>
             </thead>
             <tbody>
-              {currentMarkets.map((market, idx) => (
-                <tr 
-                  key={market.id}
-                  className="border-t border-white/10 hover:bg-primary/5 hover:border-primary/50 transition-all group"
-                >
+              {currentMarkets.map((market: any, idx) => {
+                // Generate Polymarket URL (prefer eventSlug, otherwise use redirect endpoint)
+                const polymarketUrl = market.eventSlug
+                  ? `https://polymarket.com/event/${market.eventSlug}?via=01k`
+                  : `/api/redirect-market/${market.id}`
+                
+                return (
+                  <tr 
+                    key={market.id}
+                    onClick={() => window.open(polymarketUrl, '_blank')}
+                    className="border-t border-white/10 hover:bg-primary/5 hover:border-primary/50 transition-all group cursor-pointer"
+                  >
                   <td className="p-3 text-primary font-bold font-mono text-sm group-hover:text-white transition-colors">
                     #{String(startIndex + idx + 1).padStart(3, '0')}
                   </td>
@@ -201,7 +210,8 @@ export default function MarketsPage() {
                     </span>
                   </td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         </div>

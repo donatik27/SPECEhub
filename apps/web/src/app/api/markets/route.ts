@@ -1,5 +1,15 @@
 import { NextResponse } from 'next/server'
 
+// Try to load Prisma (might not be available in all envs)
+let prisma: any = null
+if (process.env.DATABASE_URL) {
+  try {
+    prisma = require('@polymarket/database').prisma
+  } catch (e) {
+    console.warn('⚠️  Prisma not available')
+  }
+}
+
 export async function GET() {
   try {
     const response = await fetch('https://gamma-api.polymarket.com/markets?closed=false&limit=100', {
@@ -25,22 +35,70 @@ export async function GET() {
           console.warn(`Failed to parse clobTokenIds for market ${m.id}`)
         }
         
+        // Parse outcomes and outcomePrices from JSON strings
+        let outcomes = ['YES', 'NO']
+        let outcomePrices = ['0.5', '0.5']
+        
+        try {
+          outcomes = typeof m.outcomes === 'string' ? JSON.parse(m.outcomes) : (m.outcomes || ['YES', 'NO'])
+        } catch (e) {
+          console.warn(`Failed to parse outcomes for market ${m.id}`)
+        }
+        
+        try {
+          outcomePrices = typeof m.outcomePrices === 'string' ? JSON.parse(m.outcomePrices) : (m.outcomePrices || ['0.5', '0.5'])
+        } catch (e) {
+          console.warn(`Failed to parse outcomePrices for market ${m.id}`)
+        }
+        
         return {
           id: m.id,
           question: m.question,
+          slug: m.slug || '',
+          negRiskMarketID: m.negRiskMarketID || null,
           category: m.category || 'Uncategorized',
           volume: m.volumeNum || 0,
           liquidity: m.liquidityNum || 0,
           endDate: m.endDate,
           active: m.active,
           closed: m.closed,
-          outcomes: m.outcomes,
-          outcomePrices: m.outcomePrices,
-          clobTokenIds: tokenIds // Parsed array
+          outcomes: outcomes,
+          outcomePrices: outcomePrices,
+          clobTokenIds: tokenIds
         }
       })
       .filter((m: any) => m.clobTokenIds && m.clobTokenIds.length > 0) // Тільки маркети з tokenIds
       .sort((a: any, b: any) => b.volume - a.volume)
+    
+    // Enrich with eventSlug from our database if available
+    if (prisma) {
+      try {
+        const marketIds = sorted.map((m: any) => m.id)
+        const dbMarkets = await prisma.market.findMany({
+          where: {
+            id: { in: marketIds }
+          },
+          select: {
+            id: true,
+            eventSlug: true
+          }
+        })
+        
+        // Create a map for quick lookup
+        const eventSlugMap = new Map(
+          dbMarkets.map((m: any) => [m.id, m.eventSlug])
+        )
+        
+        // Add eventSlug to sorted markets
+        sorted.forEach((market: any) => {
+          market.eventSlug = eventSlugMap.get(market.id) || null
+        })
+        
+        console.log(`✅ Enriched ${dbMarkets.length}/${sorted.length} markets with eventSlug`)
+      } catch (e) {
+        console.warn('⚠️  Failed to enrich with eventSlug:', e)
+      }
+    }
     
     return NextResponse.json(sorted)
   } catch (error) {

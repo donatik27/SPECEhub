@@ -2,9 +2,13 @@ import { createPublicClient, http, Address } from 'viem'
 import { polygon } from 'viem/chains'
 
 // Polymarket працює на Polygon
+// Using public RPC (no API key required)
 export const publicClient = createPublicClient({
   chain: polygon,
-  transport: http('https://polygon-rpc.com')
+  transport: http('https://polygon.llamarpc.com', {
+    retryCount: 3,
+    retryDelay: 1000
+  })
 })
 
 // Conditional Tokens Framework (CTF) контракт

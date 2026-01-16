@@ -61,21 +61,28 @@ export default function TraderProfilePage() {
     try {
       setLoading(true)
 
-      // Fetch all traders and find this one
+      // Try to fetch trader directly from database by address
+      const traderRes = await fetch(`/api/trader/${address}`)
+      
+      if (traderRes.ok) {
+        const foundTrader: Trader = await traderRes.json()
+        setTrader(foundTrader)
+        setPositions([])
+        return
+      }
+      
+      // Fallback: try to find in monthly leaderboard (top 1000)
       const tradersRes = await fetch('/api/traders')
       const allTraders: Trader[] = await tradersRes.json()
       
       const foundTrader = allTraders.find(t => t.address.toLowerCase() === address.toLowerCase())
       
       if (!foundTrader) {
-        console.error('Trader not found')
+        console.error('Trader not found in database or leaderboard')
         return
       }
 
       setTrader(foundTrader)
-
-      // For now, we don't have real-time positions API
-      // Show empty state - we have real PnL and stats from leaderboard
       setPositions([])
       
     } catch (error) {

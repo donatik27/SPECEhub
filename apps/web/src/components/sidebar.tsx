@@ -75,7 +75,7 @@ export function Sidebar() {
         <div className="bg-black p-3 relative overflow-hidden">
           <div className="absolute top-0 right-0 text-2xl opacity-20">👽</div>
           <p className="text-xs font-bold text-primary mb-1 uppercase tracking-wider">System Status</p>
-          <p className="text-xs text-white font-mono">PHASE_0 [ACTIVE] ✓</p>
+          <p className="text-xs text-white font-mono">PHASE_3 [ACTIVE] ✓</p>
         </div>
         <p className="text-xs text-primary mt-3 text-center font-mono animate-pulse">&gt; v1.0.0_ALIEN</p>
       </div>

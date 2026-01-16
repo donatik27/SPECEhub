@@ -1,19 +1,505 @@
 import { JobData } from '../lib/queue';
 import { logger } from '../lib/logger';
+import { prisma } from '@polymarket/database';
+import { createPublicClient, http, formatUnits, encodeFunctionData, decodeFunctionResult } from 'viem';
+import { polygon } from 'viem/chains';
+
+// Polymarket CTF contract
+const CTF_CONTRACT = '0x4D97DCd97eC945f40cF65F87097ACe5EA0476045';
+const CTF_ABI = [
+  {
+    inputs: [
+      { name: 'owner', type: 'address' },
+      { name: 'id', type: 'uint256' }
+    ],
+    name: 'balanceOf',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function'
+  }
+] as const;
+
+// Multicall3
+const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11';
+const MULTICALL3_ABI = [
+  {
+    inputs: [
+      {
+        components: [
+          { name: 'target', type: 'address' },
+          { name: 'callData', type: 'bytes' }
+        ],
+        name: 'calls',
+        type: 'tuple[]'
+      }
+    ],
+    name: 'aggregate',
+    outputs: [
+      { name: 'blockNumber', type: 'uint256' },
+      { name: 'returnData', type: 'bytes[]' }
+    ],
+    stateMutability: 'view',
+    type: 'function'
+  }
+] as const;
 
 export async function handleSmartMarketsJob(data: JobData) {
   switch (data.type) {
-    case 'calculate-smart-markets':
-      await calculateSmartMarkets(data.payload);
+    case 'analyze-multi-outcome':
+      const { analyzeMultiOutcomeEvents } = await import('./multi-outcome.worker');
+      await analyzeMultiOutcomeEvents();
+      break;
+    case 'update-pinned-markets':
+      await updatePinnedMarkets(data.payload);
+      break;
+    case 'discover-new-markets':
+      await discoverNewMarkets(data.payload);
+      break;
+    case 'refresh-pinned-selection':
+      await refreshPinnedSelection(data.payload);
       break;
     default:
       logger.warn({ type: data.type }, 'Unknown smart markets job type');
   }
 }
 
-async function calculateSmartMarkets(payload: any) {
-  logger.info('Calculating smart markets...');
-  // TODO: Implement smart markets calculation
-  logger.info('Smart markets calculation completed (stub)');
+// =============================================================================
+// JOB 1: Update Pinned Markets (runs every 24 hours)
+// =============================================================================
+async function updatePinnedMarkets(payload: any) {
+  const startTime = Date.now();
+  logger.info('🔄 Updating pinned markets (top-5)...');
+  
+  try {
+    // Get current pinned markets from DB
+    const pinnedMarkets = await prisma.marketSmartStats.findMany({
+      where: { isPinned: true },
+      orderBy: { priority: 'asc' }
+    });
+    
+    if (pinnedMarkets.length === 0) {
+      logger.info('⚠️  No pinned markets found, triggering selection...');
+      await refreshPinnedSelection({});
+      return;
+    }
+    
+    logger.info(`📊 Checking ${pinnedMarkets.length} pinned markets...`);
+    
+    // Fetch ALL traders from DATABASE
+    logger.info('📥 Loading ALL traders from database...');
+    const smartTraders = await prisma.trader.findMany({
+      where: {
+        tier: { in: ['S', 'A', 'B'] }
+      },
+      select: {
+        address: true,
+        displayName: true,
+        tier: true
+      }
+    });
+    logger.info(`✅ Loaded ${smartTraders.length} S/A/B tier traders from DB`);
+    
+    // Fetch market details
+    const marketIds = pinnedMarkets.map(m => m.marketId);
+    const marketsRes = await fetch('https://gamma-api.polymarket.com/markets?limit=100');
+    const allMarkets = await marketsRes.json();
+    const markets = allMarkets.filter((m: any) => marketIds.includes(m.id));
+    
+    const client = createPublicClient({
+      chain: polygon,
+      transport: http('https://1rpc.io/matic', {
+        timeout: 30_000,
+        retryCount: 3,
+        retryDelay: 1000
+      })
+    });
+    
+    // Update each pinned market
+    for (const pinnedStat of pinnedMarkets) {
+      const market = markets.find((m: any) => m.id === pinnedStat.marketId);
+      if (!market) {
+        logger.warn(`Market ${pinnedStat.marketId} not found, skipping...`);
+        continue;
+      }
+      
+      try {
+        const analysis = await analyzeMarket(client, market, smartTraders);
+        
+        // Update in database
+        await prisma.marketSmartStats.update({
+          where: { id: pinnedStat.id },
+          data: {
+            smartCount: analysis.smartCount,
+            smartWeighted: analysis.smartWeighted,
+            smartScore: analysis.smartScore,
+            topSmartTraders: analysis.topSmartTraders,
+            lastChecked: new Date(),
+            computedAt: new Date()
+          }
+        });
+        
+        logger.info(`✅ Updated pinned #${pinnedStat.priority}: ${market.question.slice(0, 40)}... (${analysis.smartCount} traders)`);
+      } catch (error) {
+        logger.error({ error, marketId: market.id }, 'Failed to update pinned market');
+      }
+    }
+    
+    const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+    logger.info(`🎉 Pinned markets updated in ${duration}s`);
+    
+  } catch (error) {
+    logger.error({ error }, '❌ Failed to update pinned markets');
+    throw error;
+  }
 }
 
+// Helper: Find parent event slug for a market
+async function findEventSlug(market: any): Promise<string | null> {
+  try {
+    // Try to find event by searching with market details
+    if (market.negRiskMarketID) {
+      const eventsRes = await fetch('https://gamma-api.polymarket.com/events?limit=200&closed=false');
+      if (eventsRes.ok) {
+        const events = await eventsRes.json();
+        for (const event of events) {
+          if (event.markets && Array.isArray(event.markets)) {
+            const hasMatch = event.markets.some((m: any) => 
+              m.id === market.id || m.negRiskMarketID === market.negRiskMarketID
+            );
+            if (hasMatch) {
+              return event.slug;
+            }
+          }
+        }
+      }
+    }
+  } catch (error) {
+    logger.warn({ error, marketId: market.id }, 'Failed to find event slug');
+  }
+  return null;
+}
+
+// =============================================================================
+// JOB 2: Discover New Markets (runs every 30 minutes)
+// =============================================================================
+async function discoverNewMarkets(payload: any) {
+  const startTime = Date.now();
+  logger.info('🔍 Discovering new smart markets...');
+  
+  try {
+    // Fetch ALL traders from DATABASE
+    logger.info('📥 Loading ALL traders from database...');
+    const allTraders = await prisma.trader.findMany({
+      where: {
+        tier: { in: ['S', 'A', 'B'] }  // Only S/A/B tier
+      },
+      select: {
+        address: true,
+        displayName: true,
+        tier: true,
+        realizedPnl: true
+      }
+    });
+    
+    logger.info(`✅ Loaded ${allTraders.length} S/A/B tier traders from DB`);
+    logger.info(`   S-tier: ${allTraders.filter((t: any) => t.tier === 'S').length}`);
+    logger.info(`   A-tier: ${allTraders.filter((t: any) => t.tier === 'A').length}`);
+    logger.info(`   B-tier: ${allTraders.filter((t: any) => t.tier === 'B').length}`);
+    
+    const smartTraders = allTraders;
+    
+    // Fetch top markets (excluding already pinned)
+    const pinnedMarketIds = (await prisma.marketSmartStats.findMany({
+      where: { isPinned: true },
+      select: { marketId: true }
+    })).map(m => m.marketId);
+    
+    const marketsRes = await fetch('https://gamma-api.polymarket.com/markets?limit=200&closed=false&order=volume&ascending=false');
+    const allMarkets = await marketsRes.json();
+    
+    // Filter out pinned markets
+    const markets = allMarkets.filter((m: any) => !pinnedMarketIds.includes(m.id));
+    
+    logger.info(`📈 Analyzing ${markets.length} new markets...`);
+    
+    const client = createPublicClient({
+      chain: polygon,
+      transport: http('https://1rpc.io/matic', {
+        timeout: 30_000,
+        retryCount: 3,
+        retryDelay: 1000
+      })
+    });
+    
+    let discoveredCount = 0;
+    
+    // BATCHING: Process 20 markets at a time to avoid RPC rate limits
+    const BATCH_SIZE = 20;
+    for (let i = 0; i < markets.length; i += BATCH_SIZE) {
+      const batch = markets.slice(i, i + BATCH_SIZE);
+      logger.info(`📦 Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(markets.length / BATCH_SIZE)} (${batch.length} markets)...`);
+      
+      for (const market of batch) {
+        try {
+          const analysis = await analyzeMarket(client, market, smartTraders);
+        
+        // Only save if it has smart traders
+        if (analysis.smartCount > 0) {
+          // Check if already exists
+          const existing = await prisma.marketSmartStats.findFirst({
+            where: {
+              marketId: market.id,
+              computedAt: {
+                gte: new Date(Date.now() - 60 * 60 * 1000) // Last hour
+              }
+            }
+          });
+          
+          if (!existing) {
+            // Find parent event slug
+            const eventSlug = await findEventSlug(market);
+            
+            // Create/update Market record first
+            await prisma.market.upsert({
+              where: { id: market.id },
+              create: {
+                id: market.id,
+                question: market.question,
+                category: market.category,
+                slug: market.slug || null,
+                eventSlug: eventSlug,
+                endDate: market.endDate ? new Date(market.endDate) : null,
+                liquidity: market.liquidity || null,
+                volume: market.volume || null,
+                status: market.closed ? 'CLOSED' : 'OPEN'
+              },
+              update: {
+                question: market.question,
+                slug: market.slug || null,
+                eventSlug: eventSlug,
+                volume: market.volume || null
+              }
+            });
+            
+            // Now create stats
+            await prisma.marketSmartStats.create({
+              data: {
+                marketId: market.id,
+                smartCount: analysis.smartCount,
+                smartWeighted: analysis.smartWeighted,
+                smartShare: 0,
+                smartScore: analysis.smartScore,
+                topSmartTraders: analysis.topSmartTraders,
+                isPinned: false,
+                priority: 0,
+                computedAt: new Date()
+              }
+            });
+            
+            discoveredCount++;
+            logger.info(`✅ Discovered: ${market.question.slice(0, 40)}... (${analysis.smartCount} traders)`);
+          }
+        }
+        } catch (error: any) {
+          logger.error({ 
+            error: error.message, 
+            marketId: market.id,
+            question: market.question?.slice(0, 40)
+          }, 'Failed to analyze market');
+        }
+      }
+      
+      // Pause between batches to avoid rate limits
+      if (i + BATCH_SIZE < markets.length) {
+        logger.info('⏸️  Pausing 2s before next batch...');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+    
+    const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+    logger.info(`🎉 Discovery complete! Found ${discoveredCount} new smart markets in ${duration}s`);
+    
+  } catch (error) {
+    logger.error({ error }, '❌ Failed to discover new markets');
+    throw error;
+  }
+}
+
+// =============================================================================
+// JOB 3: Refresh Pinned Selection (runs every 6 hours)
+// =============================================================================
+async function refreshPinnedSelection(payload: any) {
+  const startTime = Date.now();
+  logger.info('🔄 Refreshing pinned markets selection...');
+  
+  try {
+    // Get all smart markets (last 24 hours)
+    const allSmartMarkets = await prisma.marketSmartStats.findMany({
+      where: {
+        computedAt: {
+          gte: new Date(Date.now() - 24 * 60 * 60 * 1000)
+        }
+      },
+      orderBy: {
+        smartScore: 'desc'
+      }
+    });
+    
+    if (allSmartMarkets.length === 0) {
+      logger.warn('⚠️  No smart markets found, running discovery first...');
+      await discoverNewMarkets({});
+      return;
+    }
+    
+    // Fetch market details to check endDate
+    const marketsRes = await fetch('https://gamma-api.polymarket.com/markets?limit=100');
+    const allMarkets = await marketsRes.json();
+    
+    // Select top-5 based on criteria:
+    // 1. Long deadline (endDate > 14 days)
+    // 2. High smartScore
+    // 3. Popular categories
+    const candidates = allSmartMarkets
+      .map(stat => {
+        const market = allMarkets.find((m: any) => m.id === stat.marketId);
+        if (!market) return null;
+        
+        const endDate = market.endDate ? new Date(market.endDate) : null;
+        const daysUntilEnd = endDate ? (endDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24) : 0;
+        
+        // Must have at least 14 days until end
+        if (daysUntilEnd < 14) return null;
+        
+        return {
+          stat,
+          market,
+          daysUntilEnd,
+          score: Number(stat.smartScore) * Math.log(1 + daysUntilEnd)
+        };
+      })
+      .filter(Boolean)
+      .sort((a: any, b: any) => b.score - a.score)
+      .slice(0, 5);
+    
+    if (candidates.length < 5) {
+      logger.warn(`⚠️  Only found ${candidates.length} candidates for pinning`);
+    }
+    
+    // Unpin all current pinned markets
+    await prisma.marketSmartStats.updateMany({
+      where: { isPinned: true },
+      data: {
+        isPinned: false,
+        priority: 0,
+        pinnedAt: null
+      }
+    });
+    
+    // Pin new top-5
+    for (let i = 0; i < candidates.length; i++) {
+      const candidate = candidates[i] as any;
+      await prisma.marketSmartStats.update({
+        where: { id: candidate.stat.id },
+        data: {
+          isPinned: true,
+          priority: i + 1,
+          pinnedAt: new Date(),
+          lastChecked: new Date()
+        }
+      });
+      
+      logger.info(`📌 Pinned #${i + 1}: ${candidate.market.question.slice(0, 50)}... (${candidate.daysUntilEnd.toFixed(0)} days left)`);
+    }
+    
+    const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+    logger.info(`🎉 Pinned selection refreshed in ${duration}s`);
+    
+  } catch (error) {
+    logger.error({ error }, '❌ Failed to refresh pinned selection');
+    throw error;
+  }
+}
+
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+async function analyzeMarket(client: any, market: any, traders: any[]) {
+  try {
+    const tokenIds = JSON.parse(market.clobTokenIds || '[]');
+    if (tokenIds.length === 0) {
+      throw new Error('No tokenIds');
+    }
+  
+  // Build multicall
+  const calls = [];
+  for (const trader of traders) {
+    for (const tokenId of tokenIds) {
+      calls.push({
+        target: CTF_CONTRACT,
+        callData: encodeFunctionData({
+          abi: CTF_ABI,
+          functionName: 'balanceOf',
+          args: [trader.address as `0x${string}`, BigInt(tokenId)]
+        })
+      });
+    }
+  }
+  
+  // Execute multicall
+  const results = await client.readContract({
+    address: MULTICALL3,
+    abi: MULTICALL3_ABI,
+    functionName: 'aggregate',
+    args: [calls]
+  });
+  
+  // Parse results
+  const tradersWithPositions = [];
+  let callIndex = 0;
+  
+  for (const trader of traders) {
+    let hasPosition = false;
+    let totalBalance = 0;
+    
+    for (const tokenId of tokenIds) {
+      const returnData = results[1][callIndex];
+      const balance = returnData ? Number(formatUnits(BigInt(returnData as string), 6)) : 0;
+      totalBalance += balance;
+      if (balance > 0) hasPosition = true;
+      callIndex++;
+    }
+    
+    if (hasPosition) {
+      tradersWithPositions.push({
+        ...trader,
+        balance: totalBalance
+      });
+    }
+  }
+  
+  // Calculate metrics
+  const smartCount = tradersWithPositions.length;
+  const smartWeighted = tradersWithPositions.reduce((sum, t) => {
+    const tierWeight = t.tier === 'S' ? 5 : t.tier === 'A' ? 3 : 1;
+    return sum + tierWeight;
+  }, 0);
+  const smartScore = smartWeighted * Math.log(1 + (market.volume || 0) / 1000000);
+  
+  return {
+    smartCount,
+    smartWeighted,
+    smartScore,
+    topSmartTraders: tradersWithPositions.slice(0, 6)
+  };
+  } catch (error: any) {
+    throw new Error(`analyzeMarket failed: ${error.message}`);
+  }
+}
+
+function assignTier(trader: any, leaderboard: any[]) {
+  const index = leaderboard.indexOf(trader);
+  if (index < 10) return 'S';
+  if (index < 30) return 'A';
+  return 'B';
+}

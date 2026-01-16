@@ -31,6 +31,8 @@ model Trader {
   id              String    @id @default(uuid())
   address         String    @unique
   displayName     String?
+  profilePicture  String?   // Profile picture URL
+  twitterUsername String?   // Twitter/X username (from xUsername field)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   
@@ -49,6 +51,11 @@ model Trader {
   maxDrawdown     Float     @default(0)
   tradeCount      Int       @default(0)
   
+  // Geolocation (for map visualization)
+  latitude        Float?
+  longitude       Float?
+  country         String?
+  
   lastActiveAt    DateTime?
   tags            String[]  @default([])
   
@@ -59,12 +66,15 @@ model Trader {
   @@index([tier, rarityScore])
   @@index([totalPnl])
   @@index([lastActiveAt])
+  @@index([country])
 }
 
 model Market {
   id              String        @id
   question        String
   category        String?
+  eventSlug       String?       // Polymarket parent event slug for URL
+  slug            String?       // Market slug
   endDate         DateTime?
   liquidity       Decimal?      @db.Decimal(20, 8)
   volume          Decimal?      @db.Decimal(20, 8)
@@ -133,11 +143,42 @@ model MarketSmartStats {
   smartScore      Decimal     @default(0) @db.Decimal(20, 8)
   topSmartTraders Json?
   
+  // Pinned markets (top-5 feature)
+  isPinned        Boolean     @default(false)
+  priority        Int         @default(0)        // 1-5 for top-5, 0 for dynamic
+  pinnedAt        DateTime?
+  lastChecked     DateTime?                     // Last verification time
+  
   // Relations
   market          Market      @relation(fields: [marketId], references: [id])
   
   @@index([marketId, computedAt])
   @@index([smartScore])
+  @@index([isPinned, priority])
+}
+
+model MultiOutcomePosition {
+  id              String      @id @default(uuid())
+  
+  // Event & Market info
+  eventSlug       String      // Parent event (e.g., "who-will-trump-nominate-as-fed-chair")
+  marketId        String      // Specific outcome market ID
+  outcomeTitle    String      // e.g., "Kevin Warsh"
+  currentPrice    Float       // Current odds (0-1)
+  
+  // Smart trader positions
+  traderAddress   String
+  traderName      String?
+  traderTier      Tier
+  position        String      // "YES" or "NO"
+  shares          Decimal     @db.Decimal(20, 8)
+  entryPrice      Float
+  
+  computedAt      DateTime    @default(now())
+  
+  @@index([eventSlug, computedAt])
+  @@index([marketId])
+  @@index([traderTier])
 }
 
 model IngestionState {
