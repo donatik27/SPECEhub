@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server'
 
+// Force dynamic rendering
+export const dynamic = 'force-dynamic'
+
+
 // ПРОСТИЙ API ДЛЯ ТЕСТУВАННЯ
 export async function GET() {
   try {

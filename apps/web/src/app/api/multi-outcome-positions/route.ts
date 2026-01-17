@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server'
 
+// Force dynamic rendering - this route needs DATABASE_URL at runtime
+export const dynamic = 'force-dynamic'
+
+
 // Try to load Prisma
 let prisma: any = null
 if (process.env.DATABASE_URL) {

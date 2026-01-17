@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server'
 
+// Force dynamic rendering - uses searchParams
+export const dynamic = 'force-dynamic'
+
+
 // Known parent event slugs for popular series
 const KNOWN_SERIES: Record<string, string> = {
   'super bowl 2026': 'super-bowl-champion-2026-731',

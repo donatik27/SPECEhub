@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
 
+// Force dynamic rendering - this route needs DATABASE_URL at runtime
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
   try {
     // Dynamic import to avoid build issues
