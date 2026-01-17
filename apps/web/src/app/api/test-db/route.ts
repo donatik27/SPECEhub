@@ -1,15 +1,23 @@
 import { NextResponse } from 'next/server'
-import { prisma } from '@polymarket/database'
-
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 export async function GET() {
   try {
+    if (!process.env.DATABASE_URL) {
+      return NextResponse.json(
+        { success: false, error: 'DATABASE_URL not set' },
+        { status: 500 }
+      )
+    }
+
     console.log('🔍 Testing database connection...')
     console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL)
     console.log('DATABASE_URL starts with:', process.env.DATABASE_URL?.substring(0, 30))
     
+    // Dynamic import to avoid build-time prisma initialization
+    const { prisma } = await import('@polymarket/database')
+
     // Test connection
     const smartMarkets = await prisma.marketSmartStats.count()
     const traders = await prisma.trader.count()
