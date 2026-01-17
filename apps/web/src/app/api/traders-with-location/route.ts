@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server'
+import { proxyGet } from '../_lib/proxy'
 
 // Force dynamic rendering - this route needs DATABASE_URL at runtime
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(request: Request) {
+  const proxied = await proxyGet(request, '/api/traders-with-location')
+  if (proxied) return proxied
   try {
     // Dynamic import to avoid build issues
     const { prisma } = await import('@polymarket/database')

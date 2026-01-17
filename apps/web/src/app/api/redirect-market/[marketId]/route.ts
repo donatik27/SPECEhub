@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { proxyGet } from '../../_lib/proxy'
 
 // Force dynamic rendering - this route needs DATABASE_URL at runtime
 export const dynamic = 'force-dynamic'
@@ -9,6 +10,9 @@ export async function GET(
   { params }: { params: { marketId: string } }
 ) {
   const marketId = params.marketId
+
+  const proxied = await proxyGet(request, `/api/redirect-market/${marketId}`)
+  if (proxied) return proxied
 
   let prisma: any = null
   if (process.env.DATABASE_URL) {

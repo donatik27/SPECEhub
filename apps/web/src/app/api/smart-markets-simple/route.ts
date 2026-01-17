@@ -1,16 +1,19 @@
 import { NextResponse } from 'next/server'
+import { proxyGet } from '../_lib/proxy'
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
 
 
 // ПРОСТИЙ API ДЛЯ ТЕСТУВАННЯ
-export async function GET() {
+export async function GET(request: Request) {
+  const proxied = await proxyGet(request, '/api/smart-markets-simple')
+  if (proxied) return proxied
   try {
     console.log('🔍 Fetching traders...')
     
     // Fetch traders
-    const tradersRes = await fetch('http://localhost:3000/api/traders')
+    const tradersRes = await fetch('https://specehubx-web.vercel.app/api/traders')
     const allTraders = await tradersRes.json()
     
     // Get top 5 S-tier

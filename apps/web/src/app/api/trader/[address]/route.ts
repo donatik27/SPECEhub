@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { proxyGet } from '../../_lib/proxy'
 
 // Force dynamic rendering - this route needs DATABASE_URL at runtime
 export const dynamic = 'force-dynamic'
@@ -8,6 +9,8 @@ export async function GET(
   request: Request,
   { params }: { params: { address: string } }
 ) {
+  const proxied = await proxyGet(request, `/api/trader/${params.address}`)
+  if (proxied) return proxied
   try {
     const { address } = params
     

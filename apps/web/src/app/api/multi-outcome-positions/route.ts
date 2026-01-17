@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server'
+import { proxyGet } from '../_lib/proxy'
 
 // Force dynamic rendering - this route needs DATABASE_URL at runtime
 export const dynamic = 'force-dynamic'
 
 
 export async function GET(request: Request) {
+  const proxied = await proxyGet(request, '/api/multi-outcome-positions')
+  if (proxied) return proxied
   const { searchParams } = new URL(request.url)
   const eventSlug = searchParams.get('eventSlug')
   const marketId = searchParams.get('marketId')

@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server'
+import { proxyGet } from '../_lib/proxy'
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-export async function GET() {
+export async function GET(request: Request) {
+  const proxied = await proxyGet(request, '/api/test-db')
+  if (proxied) return proxied
   try {
     if (!process.env.DATABASE_URL) {
       return NextResponse.json(
