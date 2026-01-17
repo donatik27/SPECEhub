@@ -6,6 +6,7 @@ const nextConfig = {
   serverExternalPackages: ['@prisma/client', 'prisma', '@polymarket/database'],
   outputFileTracingIncludes: {
     '/api/**': [
+      './.prisma/client/**',
       '../../node_modules/.prisma/client/**',
       '../../node_modules/@prisma/engines/**',
       '../../node_modules/.pnpm/@prisma+client@*/node_modules/.prisma/**',
