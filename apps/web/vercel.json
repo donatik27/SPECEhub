@@ -3,5 +3,11 @@
     "app/api/**/*.ts": {
       "includeFiles": "../../node_modules/.prisma/client/**"
     }
+  },
+  "build": {
+    "env": {
+      "DATABASE_URL": "postgresql://placeholder:placeholder@placeholder.neon.tech/placeholder?sslmode=require"
+    }
   }
 }
+
