@@ -11,6 +11,7 @@
     "dev": "turbo run dev --parallel",
     "lint": "turbo run lint",
     "clean": "turbo run clean",
+    "postinstall": "pnpm --filter @polymarket/database prisma:generate",
     "db:migrate": "cd packages/database && pnpm prisma migrate dev",
     "db:generate": "cd packages/database && pnpm prisma generate",
     "db:studio": "cd packages/database && pnpm prisma studio"
