@@ -89,51 +89,13 @@ async function syncLeaderboard(payload: any) {
     logger.info('💾 Saving traders to database...');
     let saved = 0;
     
-    // Helper function to fetch profile picture
-    async function fetchProfilePicture(address: string): Promise<string | null> {
-      try {
-        // Try S3 direct link first (fastest)
-        const s3Url = `https://polymarket-upload.s3.us-east-2.amazonaws.com/${address}`;
-        const s3Check = await fetch(s3Url, { 
-          method: 'HEAD',
-          signal: AbortSignal.timeout(5000)
-        });
-        
-        if (s3Check.ok) {
-          return s3Url;
-        }
-      } catch {
-        // S3 failed, try Profile API
-      }
-      
-      try {
-        // Fallback to Profile API
-        const profileRes = await fetch(
-          `https://gamma-api.polymarket.com/profile/${address}`,
-          { 
-            headers: { 'Accept': 'application/json' },
-            signal: AbortSignal.timeout(5000)
-          }
-        );
-        
-        if (profileRes.ok) {
-          const profile = await profileRes.json();
-          return profile.profilePicture || null;
-        }
-      } catch {
-        // Both failed
-      }
-      
-      return null;
-    }
-    
-    // Save traders to DB (batch process avatars separately)
+    // Save traders to DB (use profileImage from API, NOT profilePicture!)
     for (const t of allTraders) {
       if (!t.proxyWallet) continue;
       
       try {
-        // Use avatar from leaderboard API if available, otherwise fetch it
-        let profilePic = t.profilePicture || null;
+        // Leaderboard API returns 'profileImage', not 'profilePicture'
+        const profilePic = t.profileImage || null;
         
         await prisma.trader.upsert({
           where: { address: t.proxyWallet },
@@ -166,48 +128,10 @@ async function syncLeaderboard(payload: any) {
     
     logger.info(`💾 Saved ${saved} traders to database`);
     
-    // Now fetch missing profile pictures in batches (async, don't block main sync)
-    logger.info('🖼️  Fetching missing profile pictures...');
-    const tradersWithoutPics = allTraders.filter(t => !t.profilePicture && t.proxyWallet);
-    
-    if (tradersWithoutPics.length > 0) {
-      logger.info(`📸 Found ${tradersWithoutPics.length} traders without profile pictures`);
-      
-      // Process in batches of 50 to avoid overwhelming the API
-      const AVATAR_BATCH_SIZE = 50;
-      let avatarsFetched = 0;
-      
-      for (let i = 0; i < tradersWithoutPics.length; i += AVATAR_BATCH_SIZE) {
-        const batch = tradersWithoutPics.slice(i, i + AVATAR_BATCH_SIZE);
-        
-        await Promise.all(
-          batch.map(async (t) => {
-            try {
-              const profilePic = await fetchProfilePicture(t.proxyWallet);
-              
-              if (profilePic) {
-                await prisma.trader.update({
-                  where: { address: t.proxyWallet },
-                  data: { profilePicture: profilePic },
-                });
-                avatarsFetched++;
-              }
-            } catch (err) {
-              // Silently skip
-            }
-          })
-        );
-        
-        logger.info(`   Processed ${Math.min(i + AVATAR_BATCH_SIZE, tradersWithoutPics.length)}/${tradersWithoutPics.length} avatars...`);
-        
-        // Small delay between batches
-        if (i + AVATAR_BATCH_SIZE < tradersWithoutPics.length) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      }
-      
-      logger.info(`✅ Fetched ${avatarsFetched} profile pictures`);
-    }
+    // Count traders with/without profile pictures
+    const withPics = allTraders.filter(t => t.profileImage).length;
+    const withoutPics = allTraders.length - withPics;
+    logger.info(`📸 Profile pictures: ${withPics} with images, ${withoutPics} without`);
     
     // Count by tier
     const counts = await prisma.trader.groupBy({
