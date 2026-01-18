@@ -9,7 +9,8 @@
     "clean": "rm -rf dist",
     "populate": "tsx src/fetch-all-traders.ts && tsx src/update-trader-locations.ts && tsx src/test-discovery.ts",
     "geo": "tsx src/add-geolocation.ts",
-    "sync-map": "tsx src/trigger-map-sync.ts"
+    "sync-map": "tsx src/trigger-map-sync.ts",
+    "clean-fallback": "tsx src/clean-fallback-profiles.ts"
   },
   "dependencies": {
     "@polymarket/database": "workspace:*",

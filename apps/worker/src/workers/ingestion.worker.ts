@@ -474,37 +474,51 @@ async function syncMapTraders(payload: any) {
         logger.info(`   🔍 Searching for @${username}...`);
         
         // STRATEGY 1: Try Polymarket Profile API (by Twitter username)
-        // Try multiple endpoints
-        const profileEndpoints = [
-          `https://gamma-api.polymarket.com/profile/twitter/${username}`,
-          `https://gamma-api.polymarket.com/profile/@${username}`,
-          `https://data-api.polymarket.com/profile?twitter=${username}`,
+        // Try multiple variants: with/without @, case variations
+        const usernameVariants = [
+          username,
+          `@${username}`,
+          username.replace('@', ''),
+          username.toLowerCase(),
         ];
         
         let traderAddress: string | null = null;
         let traderData: any = null;
         
-        for (const endpoint of profileEndpoints) {
-          try {
-            const profileRes = await fetch(endpoint);
-            if (profileRes.ok) {
-              const profile = await profileRes.json();
-              if (profile.address || profile.proxyWallet) {
-                traderAddress = profile.address || profile.proxyWallet;
-                logger.info(`      ✓ Found address via Profile API: ${traderAddress}`);
-                break;
+        for (const variant of usernameVariants) {
+          const profileEndpoints = [
+            `https://gamma-api.polymarket.com/profile/twitter/${variant}`,
+            `https://data-api.polymarket.com/profile?twitter=${variant}`,
+          ];
+          
+          for (const endpoint of profileEndpoints) {
+            try {
+              const profileRes = await fetch(endpoint);
+              if (profileRes.ok) {
+                const profile = await profileRes.json();
+                if (profile.address || profile.proxyWallet) {
+                  traderAddress = profile.address || profile.proxyWallet;
+                  logger.info(`      ✓ Found @${username} via Profile API as "${variant}": ${traderAddress}`);
+                  break;
+                }
               }
+            } catch (e) {
+              // Try next endpoint
             }
-          } catch (e) {
-            // Try next endpoint
           }
-          await new Promise(resolve => setTimeout(resolve, 200));
+          
+          if (traderAddress) break;
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
         
         // STRATEGY 2: Search ALL leaderboards (all periods, larger limit)
         if (!traderAddress) {
           logger.info(`      → Searching leaderboards...`);
           const periods = ['day', 'week', 'month', 'all'];
+          
+          // Normalize username for comparison (remove @, trim, lowercase)
+          const normalizeUsername = (u: string) => u.replace('@', '').trim().toLowerCase();
+          const normalizedUsername = normalizeUsername(username);
           
           for (const period of periods) {
             const leaderboardRes = await fetch(
@@ -513,19 +527,36 @@ async function syncMapTraders(payload: any) {
             
             if (leaderboardRes.ok) {
               const traders = await leaderboardRes.json();
-              const trader = traders.find((t: any) => 
-                t.xUsername?.toLowerCase() === username.toLowerCase()
-              );
+              
+              // Try multiple match strategies
+              const trader = traders.find((t: any) => {
+                if (!t.xUsername) return false;
+                
+                // Strategy 1: Exact match (normalized)
+                if (normalizeUsername(t.xUsername) === normalizedUsername) return true;
+                
+                // Strategy 2: Match without @ prefix
+                if (t.xUsername.replace('@', '').toLowerCase() === normalizedUsername) return true;
+                
+                // Strategy 3: Match display name (some traders use different Twitter vs display name)
+                if (t.userName && normalizeUsername(t.userName) === normalizedUsername) return true;
+                
+                return false;
+              });
               
               if (trader && trader.proxyWallet) {
                 traderAddress = trader.proxyWallet;
                 traderData = trader;
-                logger.info(`      ✓ Found in ${period.toUpperCase()} leaderboard: ${traderAddress}`);
+                logger.info(`      ✓ Found @${username} in ${period.toUpperCase()} as "${trader.xUsername}" (${traderAddress})`);
                 break;
               }
             }
             
             await new Promise(resolve => setTimeout(resolve, 200));
+          }
+          
+          if (!traderAddress) {
+            logger.warn(`      ✗ @${username} NOT found in any leaderboard (searched ${periods.join(', ')})`);
           }
         }
         
