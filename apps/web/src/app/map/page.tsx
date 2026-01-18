@@ -53,10 +53,20 @@ export default function MapPage() {
   const [loading, setLoading] = useState(true)
   const [hoveredTrader, setHoveredTrader] = useState<HoveredTrader | null>(null)
   const [focusedTrader, setFocusedTrader] = useState<{ lat: number; lng: number; address: string } | null>(null)
+  const [topTradersRotation, setTopTradersRotation] = useState(0) // For randomizing top traders
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     fetchData()
+  }, [])
+
+  // Rotate top traders every 15 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTopTradersRotation(prev => prev + 1)
+    }, 15000) // 15 seconds
+    
+    return () => clearInterval(interval)
   }, [])
 
   // Handler with delay for trader hover
@@ -310,38 +320,32 @@ export default function MapPage() {
           </h2>
           <div className="space-y-2 max-h-[400px] overflow-y-auto">
             {(() => {
-              // Featured traders to highlight
-              const featuredNames = [
-                'HolyMoses7', 'holy_moses7', 'Moses',
-                'betwick', 'Betwick',
-                'ImJustKen',
-                'Dropper',
-                'ProfessionalPunter',
-                'FireKevinPatullo',
-                'scottilicious'
-              ].map(n => n.toLowerCase())
+              // Randomize traders display (changes every 15 seconds)
+              // Use deterministic shuffle based on rotation index
+              const shuffled = [...traders].sort((a, b) => {
+                const hashA = (a.trader.address.charCodeAt(0) + topTradersRotation) % traders.length;
+                const hashB = (b.trader.address.charCodeAt(0) + topTradersRotation) % traders.length;
+                return hashA - hashB;
+              });
               
-              // Find featured traders first
-              const featured = traders.filter(t => 
-                featuredNames.some(fn => t.trader.displayName.toLowerCase().includes(fn))
-              )
-              
-              // Then add other top traders
-              const others = traders.filter(t => 
-                !featuredNames.some(fn => t.trader.displayName.toLowerCase().includes(fn))
-              ).slice(0, Math.max(0, 10 - featured.length))
-              
-              const displayTraders = [...featured, ...others].slice(0, 10)
+              // Take top 8 from shuffled list
+              const displayTraders = shuffled.slice(0, 8);
               
               return displayTraders.map((marker) => (
                 <div
                   key={marker.trader.address}
                   onClick={() => {
+                    // Set focused trader
                     setFocusedTrader({
                       lat: marker.lat,
                       lng: marker.lng,
                       address: marker.trader.address
                     });
+                    
+                    // Auto-clear focus after 8 seconds
+                    setTimeout(() => {
+                      setFocusedTrader(null);
+                    }, 8000);
                   }}
                   className="flex items-center justify-between p-2 bg-black/40 pixel-border border-white/20 hover:border-primary transition-colors cursor-pointer group"
                 >

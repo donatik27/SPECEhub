@@ -275,7 +275,7 @@ const TRADER_LOCATIONS: Record<string, { country: string; displayName: string; t
 };
 
 // Generate static traders with coordinates
-export const STATIC_MAPPED_TRADERS: MappedTrader[] = Object.entries(TRADER_LOCATIONS).map(([xUsername, data]) => {
+export const STATIC_MAPPED_TRADERS: MappedTrader[] = Object.entries(TRADER_LOCATIONS).map(([xUsername, data], index) => {
   const cityOptions = COUNTRY_COORDS[data.country];
   
   if (!cityOptions || cityOptions.length === 0) {
@@ -283,12 +283,15 @@ export const STATIC_MAPPED_TRADERS: MappedTrader[] = Object.entries(TRADER_LOCAT
     return null;
   }
   
-  // Pick random city from country
-  const cityCoords = cityOptions[Math.floor(Math.random() * cityOptions.length)];
+  // Pick random city from country (use index for deterministic but varied selection)
+  const cityIndex = (index * 7 + xUsername.length) % cityOptions.length;
+  const cityCoords = cityOptions[cityIndex];
   
-  // Add random offset for variety within city (±0.3 degrees = ~30km)
-  const latOffset = (Math.random() - 0.5) * 0.6;
-  const lonOffset = (Math.random() - 0.5) * 0.6;
+  // Add larger random offset to prevent clustering (±1.0 degrees = ~100km)
+  // Use username hash for deterministic randomness
+  const hashCode = xUsername.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const latOffset = ((hashCode % 200) - 100) / 100; // Range: -1.0 to 1.0
+  const lonOffset = (((hashCode * 17) % 200) - 100) / 100; // Range: -1.0 to 1.0
   
   // Generate fake address based on username
   const fakeAddress = `0x${xUsername.slice(0, 8).padEnd(40, '0')}`;
