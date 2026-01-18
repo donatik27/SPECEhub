@@ -64,49 +64,76 @@ async function syncLeaderboard(payload: any) {
       const batch = await res.json();
       
       if (batch.length === 0) {
-        logger.info(`✅ Reached end of leaderboard at ${allTraders.length} traders`);
+        logger.info(`⚠️  Reached end of leaderboard at ${allTraders.length} traders (expected 1000)`);
         break;
       }
       
+      if (batch.length < BATCH_SIZE && offset + batch.length < 1000) {
+        logger.warn(`⚠️  Batch ${Math.floor(offset / BATCH_SIZE) + 1} returned ${batch.length} traders (expected ${BATCH_SIZE})`);
+      }
+      
       allTraders.push(...batch);
-      logger.info(`   Fetched ${batch.length} traders (total: ${allTraders.length})`);
+      logger.info(`   ✓ Fetched ${batch.length} traders (total: ${allTraders.length}/1000)`);
       
       // Small pause to avoid rate limits
       await new Promise(resolve => setTimeout(resolve, 500));
     }
     
-    logger.info(`✅ Fetched ${allTraders.length} traders total`);
+    if (allTraders.length < 1000) {
+      logger.warn(`⚠️  Only fetched ${allTraders.length}/1000 traders from Polymarket API`);
+    } else {
+      logger.info(`✅ Fetched all ${allTraders.length} traders`);
+    }
     
     // Assign tiers and save to DB
     logger.info('💾 Saving traders to database...');
     let saved = 0;
     
+    // Helper function to fetch profile picture
+    async function fetchProfilePicture(address: string): Promise<string | null> {
+      try {
+        // Try S3 direct link first (fastest)
+        const s3Url = `https://polymarket-upload.s3.us-east-2.amazonaws.com/${address}`;
+        const s3Check = await fetch(s3Url, { 
+          method: 'HEAD',
+          signal: AbortSignal.timeout(5000)
+        });
+        
+        if (s3Check.ok) {
+          return s3Url;
+        }
+      } catch {
+        // S3 failed, try Profile API
+      }
+      
+      try {
+        // Fallback to Profile API
+        const profileRes = await fetch(
+          `https://gamma-api.polymarket.com/profile/${address}`,
+          { 
+            headers: { 'Accept': 'application/json' },
+            signal: AbortSignal.timeout(5000)
+          }
+        );
+        
+        if (profileRes.ok) {
+          const profile = await profileRes.json();
+          return profile.profilePicture || null;
+        }
+      } catch {
+        // Both failed
+      }
+      
+      return null;
+    }
+    
+    // Save traders to DB (batch process avatars separately)
     for (const t of allTraders) {
       if (!t.proxyWallet) continue;
       
       try {
-        // Try to fetch profile picture from Polymarket if not provided
+        // Use avatar from leaderboard API if available, otherwise fetch it
         let profilePic = t.profilePicture || null;
-        
-        if (!profilePic) {
-          try {
-            // Try Polymarket profile API
-            const profileRes = await fetch(
-              `https://gamma-api.polymarket.com/profile/${t.proxyWallet}`,
-              { 
-                headers: { 'Accept': 'application/json' },
-                signal: AbortSignal.timeout(3000) // 3s timeout
-              }
-            );
-            
-            if (profileRes.ok) {
-              const profile = await profileRes.json();
-              profilePic = profile.profilePicture || null;
-            }
-          } catch (err) {
-            // Silently fail - we'll use fallback avatar
-          }
-        }
         
         await prisma.trader.upsert({
           where: { address: t.proxyWallet },
@@ -135,6 +162,51 @@ async function syncLeaderboard(payload: any) {
       } catch (error: any) {
         logger.error({ error: error.message, address: t.proxyWallet }, 'Failed to save trader');
       }
+    }
+    
+    logger.info(`💾 Saved ${saved} traders to database`);
+    
+    // Now fetch missing profile pictures in batches (async, don't block main sync)
+    logger.info('🖼️  Fetching missing profile pictures...');
+    const tradersWithoutPics = allTraders.filter(t => !t.profilePicture && t.proxyWallet);
+    
+    if (tradersWithoutPics.length > 0) {
+      logger.info(`📸 Found ${tradersWithoutPics.length} traders without profile pictures`);
+      
+      // Process in batches of 50 to avoid overwhelming the API
+      const AVATAR_BATCH_SIZE = 50;
+      let avatarsFetched = 0;
+      
+      for (let i = 0; i < tradersWithoutPics.length; i += AVATAR_BATCH_SIZE) {
+        const batch = tradersWithoutPics.slice(i, i + AVATAR_BATCH_SIZE);
+        
+        await Promise.all(
+          batch.map(async (t) => {
+            try {
+              const profilePic = await fetchProfilePicture(t.proxyWallet);
+              
+              if (profilePic) {
+                await prisma.trader.update({
+                  where: { address: t.proxyWallet },
+                  data: { profilePicture: profilePic },
+                });
+                avatarsFetched++;
+              }
+            } catch (err) {
+              // Silently skip
+            }
+          })
+        );
+        
+        logger.info(`   Processed ${Math.min(i + AVATAR_BATCH_SIZE, tradersWithoutPics.length)}/${tradersWithoutPics.length} avatars...`);
+        
+        // Small delay between batches
+        if (i + AVATAR_BATCH_SIZE < tradersWithoutPics.length) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+      
+      logger.info(`✅ Fetched ${avatarsFetched} profile pictures`);
     }
     
     // Count by tier
