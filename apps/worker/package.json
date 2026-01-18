@@ -7,7 +7,8 @@
     "start": "pnpm build && node dist/index.js",
     "start:prod": "node dist/index.js",
     "clean": "rm -rf dist",
-    "populate": "tsx src/fetch-all-traders.ts && tsx src/update-trader-locations.ts && tsx src/test-discovery.ts"
+    "populate": "tsx src/fetch-all-traders.ts && tsx src/update-trader-locations.ts && tsx src/test-discovery.ts",
+    "geo": "tsx src/add-geolocation.ts"
   },
   "dependencies": {
     "@polymarket/database": "workspace:*",
