@@ -149,42 +149,32 @@ app.post('/api/traders-map-enriched', async (req, res) => {
       dbTraders.map((t) => [t.twitterUsername?.toLowerCase(), t])
     );
 
-    // Merge: static coordinates + real data
-    const enrichedTraders = staticTraders.map((staticTrader: any) => {
-      const realTrader = traderMap.get(staticTrader.xUsername?.toLowerCase());
+    // Merge: static coordinates + real data (ONLY return real traders!)
+    const enrichedTraders = staticTraders
+      .map((staticTrader: any) => {
+        const realTrader = traderMap.get(staticTrader.xUsername?.toLowerCase());
 
-      if (realTrader) {
-        // Use real data with static coordinates
-        return {
-          address: realTrader.address, // REAL address
-          displayName: realTrader.displayName || staticTrader.displayName,
-          profilePicture: realTrader.profilePicture || staticTrader.avatar,
-          tier: realTrader.tier,
-          xUsername: staticTrader.xUsername,
-          latitude: staticTrader.latitude, // Static coordinates
-          longitude: staticTrader.longitude, // Static coordinates
-          country: staticTrader.country,
-          totalPnl: Number(realTrader.totalPnl), // REAL PnL
-          rarityScore: realTrader.rarityScore,
-          winRate: realTrader.winRate,
-        };
-      }
+        if (realTrader) {
+          // Use real data with static coordinates
+          return {
+            address: realTrader.address, // REAL address
+            displayName: realTrader.displayName || staticTrader.displayName,
+            profilePicture: realTrader.profilePicture || staticTrader.avatar,
+            tier: realTrader.tier,
+            xUsername: staticTrader.xUsername,
+            latitude: staticTrader.latitude, // Static coordinates
+            longitude: staticTrader.longitude, // Static coordinates
+            country: staticTrader.country,
+            totalPnl: Number(realTrader.totalPnl), // REAL PnL
+            rarityScore: realTrader.rarityScore,
+            winRate: realTrader.winRate,
+          };
+        }
 
-      // Fallback to static data if trader not in DB
-      return {
-        address: staticTrader.address,
-        displayName: staticTrader.displayName,
-        profilePicture: staticTrader.avatar,
-        tier: staticTrader.tier,
-        xUsername: staticTrader.xUsername,
-        latitude: staticTrader.latitude,
-        longitude: staticTrader.longitude,
-        country: staticTrader.country,
-        totalPnl: staticTrader.totalPnl,
-        rarityScore: staticTrader.rarityScore,
-        winRate: staticTrader.winRate || 0,
-      };
-    });
+        // NOT FOUND: Skip trader (no fake data!)
+        return null;
+      })
+      .filter((t: any) => t !== null); // Remove nulls (traders not in DB)
 
     res.json(enrichedTraders);
   } catch (error) {

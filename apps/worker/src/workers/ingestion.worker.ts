@@ -600,37 +600,9 @@ async function syncMapTraders(payload: any) {
           found++;
           if (!trader) created++;
         } else {
-          // FALLBACK: Create profile with fake address (deterministic from username)
-          logger.warn(`      ⚠️  @${username} not found in Polymarket API - using fallback`);
-          
-          // CRITICAL: Use SAME algorithm as static-traders.ts!
-          // This ensures addresses match between frontend and database
-          const fakeAddress = `0x${username.slice(0, 8).padEnd(40, '0')}`.toLowerCase();
-          
-          logger.info(`      → Fake address: ${fakeAddress}`);
-          
-          // Use UPSERT to avoid duplicates (if fallback was created before)
-          await prisma.trader.upsert({
-            where: { address: fakeAddress },
-            update: {
-              // Keep existing fallback data (no new data available)
-            },
-            create: {
-              address: fakeAddress,
-              displayName: username,
-              profilePicture: `https://unavatar.io/twitter/${username}`,
-              twitterUsername: username,
-              tier: 'B',
-              realizedPnl: 25000,
-              totalPnl: 25000,
-              tradeCount: 10,
-              winRate: 50,
-              rarityScore: 25000,
-            }
-          });
-          
-          logger.info(`      ✅ Ensured fallback profile for @${username} (${fakeAddress})`);
-          found++;
+          // NOT FOUND: Skip trader (no fake profiles!)
+          logger.warn(`      ⚠️  @${username} NOT found in Polymarket - SKIPPING (no fake data)`);
+          notFound++;
         }
         
       } catch (error: any) {
@@ -647,12 +619,10 @@ async function syncMapTraders(payload: any) {
     logger.info('✅ MAP TRADERS SYNC COMPLETE!');
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     logger.info(`📊 Results:`);
-    logger.info(`   ✅ Found: ${found} traders`);
-    logger.info(`   🆕 Created fallback: ${created} traders`);
-    logger.info(`   ❌ Not found: ${notFound} traders`);
-    logger.info(`   📍 Total map traders: ${MAP_TRADERS_USERNAMES.length}`);
+    logger.info(`   ✅ Found in Polymarket: ${found} traders`);
+    logger.info(`   ❌ Not found (skipped): ${notFound} traders`);
+    logger.info(`   📍 Only REAL traders with REAL data!`);
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    logger.info('🎉 All map traders now have profiles in leaderboard!');
   } catch (error: any) {
     logger.error({ error: error.message }, '❌ Map trader sync failed');
     throw error;
