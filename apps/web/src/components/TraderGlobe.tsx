@@ -18,6 +18,7 @@ interface TraderMarker {
 interface TraderGlobeProps {
   traders: TraderMarker[];
   onTraderHover?: (trader: TraderMarker | null) => void;
+  focusedTrader?: { lat: number; lng: number; address: string } | null;
 }
 
 // Convert lat/lng to 3D coordinates on sphere surface
@@ -83,18 +84,42 @@ function Earth() {
 function RotatingGlobe({ 
   traders, 
   shouldRotate,
-  onHoverChange 
+  onHoverChange,
+  focusedTrader
 }: { 
   traders: TraderMarker[];
   shouldRotate: boolean;
   onHoverChange: (trader: TraderMarker | null) => void;
+  focusedTrader?: { lat: number; lng: number; address: string } | null;
 }) {
   const groupRef = useRef<THREE.Group>(null);
+  const targetRotationRef = useRef({ y: 0, x: 0 });
 
-  // Auto-rotate only if shouldRotate is true
+  // Update target rotation when focused trader changes
+  React.useEffect(() => {
+    if (focusedTrader && groupRef.current) {
+      // Convert lat/lng to rotation angles
+      // Longitude -> Y rotation (around vertical axis)
+      // Latitude -> X rotation (around horizontal axis)
+      const targetY = -(focusedTrader.lng * Math.PI) / 180;
+      const targetX = (focusedTrader.lat * Math.PI) / 180;
+      
+      targetRotationRef.current = { y: targetY, x: targetX };
+    }
+  }, [focusedTrader]);
+
+  // Auto-rotate or animate to focused trader
   useFrame(() => {
-    if (groupRef.current && shouldRotate) {
-      groupRef.current.rotation.y += 0.002;
+    if (groupRef.current) {
+      if (focusedTrader) {
+        // Smoothly rotate to focused trader
+        const lerpSpeed = 0.05;
+        groupRef.current.rotation.y += (targetRotationRef.current.y - groupRef.current.rotation.y) * lerpSpeed;
+        groupRef.current.rotation.x += (targetRotationRef.current.x - groupRef.current.rotation.x) * lerpSpeed;
+      } else if (shouldRotate) {
+        // Auto-rotate
+        groupRef.current.rotation.y += 0.002;
+      }
     }
   });
 
@@ -109,6 +134,7 @@ function RotatingGlobe({
           key={trader.address} 
           trader={trader}
           onHoverChange={onHoverChange}
+          isFocused={focusedTrader?.address === trader.address}
         />
       ))}
     </group>
@@ -118,10 +144,12 @@ function RotatingGlobe({
 // Trader marker on globe surface
 function TraderPin({ 
   trader,
-  onHoverChange 
+  onHoverChange,
+  isFocused = false
 }: { 
   trader: TraderMarker;
   onHoverChange?: (trader: TraderMarker | null) => void;
+  isFocused?: boolean;
 }) {
   const position = useMemo(
     () => latLngToVector3(trader.lat, trader.lng, 2.05),
@@ -176,15 +204,16 @@ function TraderPin({
             width: '50px',
             height: '50px',
             borderRadius: '50%',
-            border: `3px solid ${tierColor}`,
+            border: `${isFocused ? '5' : '3'}px solid ${tierColor}`,
             overflow: 'hidden',
             transition: 'all 0.25s ease-out',
-            boxShadow: hovered 
+            boxShadow: (hovered || isFocused)
               ? `0 0 25px ${tierColor}, 0 0 50px ${tierColor}` 
               : `0 0 15px ${tierColor}`,
-            transform: hovered ? 'scale(1.2)' : 'scale(1)',
+            transform: (hovered || isFocused) ? 'scale(1.3)' : 'scale(1)',
             backgroundColor: '#000',
             willChange: 'transform, box-shadow',
+            animation: isFocused ? 'pulse 2s infinite' : 'none',
           }}
         >
           <img
@@ -208,10 +237,14 @@ function TraderPin({
       </Html>
 
       {/* Glow effect behind avatar */}
-      {hovered && (
+      {(hovered || isFocused) && (
         <mesh>
           <sphereGeometry args={[0.12, 16, 16]} />
-          <meshBasicMaterial color={tierColor} transparent opacity={0.4} />
+          <meshBasicMaterial 
+            color={tierColor} 
+            transparent 
+            opacity={isFocused ? 0.6 : 0.4} 
+          />
         </mesh>
       )}
     </group>
@@ -257,7 +290,7 @@ function Stars() {
 }
 
 // Main 3D Globe Component
-export default function TraderGlobe({ traders, onTraderHover }: TraderGlobeProps) {
+export default function TraderGlobe({ traders, onTraderHover, focusedTrader }: TraderGlobeProps) {
   const [shouldRotate, setShouldRotate] = React.useState(false);
   const [isHovered, setIsHovered] = React.useState(false);
   const [isInteracting, setIsInteracting] = React.useState(false);
@@ -340,6 +373,7 @@ export default function TraderGlobe({ traders, onTraderHover }: TraderGlobeProps
           traders={traders}
           shouldRotate={shouldRotate}
           onHoverChange={handleHoverChange}
+          focusedTrader={focusedTrader}
         />
 
         {/* Controls */}

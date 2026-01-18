@@ -52,6 +52,7 @@ export default function MapPage() {
   const [traders, setTraders] = useState<TraderMarker[]>([])
   const [loading, setLoading] = useState(true)
   const [hoveredTrader, setHoveredTrader] = useState<HoveredTrader | null>(null)
+  const [focusedTrader, setFocusedTrader] = useState<{ lat: number; lng: number; address: string } | null>(null)
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
@@ -273,6 +274,7 @@ export default function MapPage() {
               profileImage: m.trader.avatar,
             }))}
             onTraderHover={handleTraderHover}
+            focusedTrader={focusedTrader}
           />
         </Suspense>
       </div>
@@ -332,9 +334,15 @@ export default function MapPage() {
               const displayTraders = [...featured, ...others].slice(0, 10)
               
               return displayTraders.map((marker) => (
-                <Link
+                <div
                   key={marker.trader.address}
-                  href={`/traders/${marker.trader.address}`}
+                  onClick={() => {
+                    setFocusedTrader({
+                      lat: marker.lat,
+                      lng: marker.lng,
+                      address: marker.trader.address
+                    });
+                  }}
                   className="flex items-center justify-between p-2 bg-black/40 pixel-border border-white/20 hover:border-primary transition-colors cursor-pointer group"
                 >
                   <div className="flex items-center gap-3">
@@ -372,7 +380,7 @@ export default function MapPage() {
                     </div>
                   </div>
                   <span className="text-xs text-muted-foreground">{marker.region}</span>
-                </Link>
+                </div>
               ))
             })()}
           </div>

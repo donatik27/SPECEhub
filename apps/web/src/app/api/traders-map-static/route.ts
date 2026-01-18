@@ -13,6 +13,7 @@ export async function GET() {
     xUsername: t.xUsername,
     latitude: t.latitude,
     longitude: t.longitude,
+    country: t.country, // Include country for region grouping
     totalPnl: 0, // Static data doesn't have PnL
     rarityScore: 0,
   }));
