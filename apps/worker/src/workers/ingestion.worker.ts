@@ -81,12 +81,35 @@ async function syncLeaderboard(payload: any) {
       if (!t.proxyWallet) continue;
       
       try {
+        // Try to fetch profile picture from Polymarket if not provided
+        let profilePic = t.profilePicture || null;
+        
+        if (!profilePic) {
+          try {
+            // Try Polymarket profile API
+            const profileRes = await fetch(
+              `https://gamma-api.polymarket.com/profile/${t.proxyWallet}`,
+              { 
+                headers: { 'Accept': 'application/json' },
+                signal: AbortSignal.timeout(3000) // 3s timeout
+              }
+            );
+            
+            if (profileRes.ok) {
+              const profile = await profileRes.json();
+              profilePic = profile.profilePicture || null;
+            }
+          } catch (err) {
+            // Silently fail - we'll use fallback avatar
+          }
+        }
+        
         await prisma.trader.upsert({
           where: { address: t.proxyWallet },
           create: {
             address: t.proxyWallet,
             displayName: t.userName || `${t.proxyWallet?.slice(0, 6)}...`,
-            profilePicture: t.profilePicture || null,
+            profilePicture: profilePic,
             twitterUsername: t.xUsername || null,
             tier: assignTier(t, allTraders),
             realizedPnl: t.pnl || 0,
@@ -96,7 +119,7 @@ async function syncLeaderboard(payload: any) {
           },
           update: {
             displayName: t.userName || undefined,
-            profilePicture: t.profilePicture || undefined,
+            profilePicture: profilePic || undefined,
             twitterUsername: t.xUsername || undefined,
             tier: assignTier(t, allTraders),
             realizedPnl: t.pnl || 0,
