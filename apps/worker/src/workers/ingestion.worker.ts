@@ -1,6 +1,7 @@
 import { JobData } from '../lib/queue';
 import { logger } from '../lib/logger';
 import prisma from '@polymarket/database';
+import { STATIC_MAPPED_TRADERS } from '@polymarket/shared';
 
 export async function handleIngestionJob(data: JobData) {
   switch (data.type) {
@@ -447,31 +448,19 @@ async function syncTraderPositions(payload: any) {
 }
 
 async function syncMapTraders(payload: any) {
+  // Extract all Twitter usernames from STATIC_MAPPED_TRADERS
+  const MAP_TRADERS_USERNAMES = STATIC_MAPPED_TRADERS
+    .map(t => t.xUsername)
+    .filter(Boolean) as string[];
+  
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  logger.info('🗺️  STARTING MAP TRADERS SYNC (131 traders)');
+  logger.info(`🗺️  STARTING MAP TRADERS SYNC (${MAP_TRADERS_USERNAMES.length} traders)`);
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   logger.info('📊 Strategy:');
   logger.info('   1. Try Polymarket Profile API (by Twitter username)');
   logger.info('   2. Search leaderboards (day/week/month/all, 5000 traders each)');
   logger.info('   3. Create fallback profile if not found');
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  
-  // Map traders Twitter usernames (from static-traders.ts)
-  const MAP_TRADERS_USERNAMES = [
-    '0xTactic', '0xTrinity', 'AbrahamKurland', 'AnjunPoly', 'AnselFang',
-    'BeneGesseritPM', 'Betwick1', 'BitalikWuterin', 'BrokieTrades', 'CUTNPASTE4',
-    'Cabronidus', 'CarOnPolymarket', 'ColeBartiromo', 'Domahhhh', 'Dyor_0x',
-    'Eltonma', 'EricZhu06', 'Ferzinhagianola', 'Foster', 'HanRiverVictim',
-    'HarveyMackinto2', 'IceFrosst', 'Impij25', 'IqDegen', 'JJo3999',
-    'Junk3383', 'LegenTrader86', 'MiSTkyGo', 'MrOziPM', 'ParkDae_gangnam',
-    'PatroclusPoly', 'SnoorrrasonPoly', 'UjxTCY7Z7ftjiNq', 'XPredicter', 'biancalianne418',
-    'bitcoinzhang1', 'cripes3', 'cynical_reason', 'debased_PM', 'denizz_poly',
-    'drewlivanos', 'dw8998', 'evan_semet', 'feverpromotions', 'fortaellinger',
-    'holy_moses7', 'hypsterlo', 'johnleftman', 'jongpatori', 'joselebetis2',
-    'love_u_4ever', 'one8tyfive', 'smdx_btc', 'tulipking', 'vacoolaaaa',
-    'videlake', 'wkmfa57',
-  ];
-  
   logger.info(`📝 Total traders to sync: ${MAP_TRADERS_USERNAMES.length}`);
   logger.info('');
   

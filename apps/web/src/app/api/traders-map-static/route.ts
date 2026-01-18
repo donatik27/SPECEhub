@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { STATIC_MAPPED_TRADERS } from '@/lib/static-traders';
+import { STATIC_MAPPED_TRADERS } from '@polymarket/shared';
 
 export const dynamic = 'force-dynamic';
 
