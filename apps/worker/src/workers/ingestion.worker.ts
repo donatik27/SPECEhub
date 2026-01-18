@@ -114,6 +114,17 @@ async function syncLeaderboard(payload: any) {
         // Leaderboard API returns 'profileImage', not 'profilePicture'
         const profilePic = t.profileImage || null;
         
+        // Extract volume and markets_traded from API
+        const volume = t.volume || 0;
+        const marketsTraded = t.markets_traded || 0;
+        
+        // Calculate win rate (if API provides profitable markets count)
+        // Note: Polymarket API doesn't directly provide win rate, so we estimate
+        // Win rate = profitable trades / total trades (simplified)
+        const winRate = marketsTraded > 0 && t.pnl > 0 
+          ? Math.min(((t.pnl / volume) * 100), 100) // Estimate based on PnL/Volume ratio
+          : 0;
+        
         await prisma.trader.upsert({
           where: { address: t.proxyWallet },
           create: {
@@ -124,8 +135,10 @@ async function syncLeaderboard(payload: any) {
             tier: assignTier(t, allTraders),
             realizedPnl: t.pnl || 0,
             totalPnl: t.pnl || 0,
-            rarityScore: 0,
-            tradeCount: 0,
+            volume: volume,
+            tradeCount: marketsTraded,
+            winRate: winRate,
+            rarityScore: Math.floor((t.pnl || 0) + (volume * 0.1)), // Simple score based on PnL + Volume
           },
           update: {
             displayName: t.userName || undefined,
@@ -134,6 +147,10 @@ async function syncLeaderboard(payload: any) {
             tier: assignTier(t, allTraders),
             realizedPnl: t.pnl || 0,
             totalPnl: t.pnl || 0,
+            volume: volume,
+            tradeCount: marketsTraded,
+            winRate: winRate,
+            rarityScore: Math.floor((t.pnl || 0) + (volume * 0.1)),
             lastActiveAt: new Date(),
           },
         });

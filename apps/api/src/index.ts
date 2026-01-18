@@ -47,6 +47,7 @@ app.get('/api/traders', async (_req, res) => {
         rarityScore: true,
         realizedPnl: true,
         totalPnl: true,
+        volume: true, // Added volume
         winRate: true,
         tradeCount: true,
       },
@@ -61,7 +62,7 @@ app.get('/api/traders', async (_req, res) => {
       tier: t.tier,
       rarityScore: t.rarityScore,
       estimatedPnL: Number(t.realizedPnl),
-      volume: 0, // TODO: calculate from trades
+      volume: Number(t.volume), // Real volume from DB
       winRate: t.winRate,
       tradeCount: t.tradeCount,
       verified: !!t.twitterUsername,
@@ -415,6 +416,7 @@ app.get('/api/trader/:address', async (req, res) => {
         realizedPnl: true,
         totalPnl: true,
         unrealizedPnl: true,
+        volume: true, // Added volume
         winRate: true,
         profitFactor: true,
         maxDrawdown: true,
@@ -437,7 +439,7 @@ app.get('/api/trader/:address', async (req, res) => {
       tier: trader.tier,
       rarityScore: trader.rarityScore,
       estimatedPnL: Number(trader.realizedPnl),
-      volume: 0,
+      volume: Number(trader.volume), // Real volume from DB
       winRate: trader.winRate,
       tradeCount: trader.tradeCount,
       verified: !!trader.twitterUsername,
