@@ -37,21 +37,16 @@ async function main() {
   );
   logger.info('✅ [2/3] Markets sync queued (starts in 10 seconds)');
   
-  // Trigger PUBLIC TRADERS SYNC immediately (after leaderboard completes)
-  // This will sync TOP-200 traders with Twitter to the X/Media tab
-  await queues.ingestion.add(
-    'sync-public-traders-immediate',
-    { type: 'sync-public-traders' },
-    { delay: 180000, priority: 2 } // 3 minutes delay (after leaderboard completes)
-  );
-  logger.info('✅ [3/3] SYNC PUBLIC TRADERS queued (starts in 3 minutes)');
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   logger.info('⏰ Timeline:');
   logger.info('   NOW        → Leaderboard TOP-1000 (month only)');
   logger.info('   +10 sec    → Markets');
-  logger.info('   +3 min     → 🎯 Sync TOP-200 PUBLIC traders (X/Media tab)');
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   logger.info('🎉 Worker is running!');
+  logger.info('');
+  logger.info('📝 To sync public traders (X/Media tab), run:');
+  logger.info('   pnpm sync-public');
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 }
 
 main().catch((error) => {
