@@ -11,6 +11,7 @@ export type JobType =
   | 'sync-leaderboard'
   | 'sync-markets'
   | 'find-public-traders'
+  | 'sync-public-traders'
   | 'sync-trader-trades'
   | 'sync-trader-positions'
   | 'calculate-rarity-scores'

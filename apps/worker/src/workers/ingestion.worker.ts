@@ -13,6 +13,9 @@ export async function handleIngestionJob(data: JobData) {
     case 'find-public-traders':
       await findPublicTraders(data.payload);
       break;
+    case 'sync-public-traders':
+      await syncPublicTraders(data.payload);
+      break;
     case 'sync-trader-trades':
       await syncTraderTrades(data.payload);
       break;
@@ -498,6 +501,161 @@ async function findPublicTraders(payload: any) {
     
   } catch (error: any) {
     logger.error({ error: error.message }, '❌ Failed to find public traders');
+    throw error;
+  }
+}
+
+async function syncPublicTraders(payload: any) {
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  logger.info('🎯 SYNCING PUBLIC TRADERS (Media X Leaderboard)');
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  
+  try {
+    const publicTradersMap = new Map<string, any>();
+    const MAX_TRADERS = 200;
+    
+    // Fetch from MONTHLY and WEEKLY leaderboards
+    const periods = ['month', 'week'];
+    
+    for (const period of periods) {
+      logger.info(`📥 Fetching top-1000 from ${period.toUpperCase()} leaderboard...`);
+      
+      const res = await fetch(
+        `https://data-api.polymarket.com/v1/leaderboard?timePeriod=${period}&orderBy=PNL&limit=1000`
+      );
+      
+      if (!res.ok) {
+        logger.error({ status: res.status, period }, 'API error');
+        continue;
+      }
+      
+      const traders = await res.json();
+      
+      // Filter: only traders with Twitter (xUsername)
+      const withTwitter = traders.filter((t: any) => t.xUsername && t.proxyWallet);
+      
+      logger.info(`   ✓ Found ${withTwitter.length} traders with Twitter in ${period}`);
+      
+      // Add to map (deduplicate by address, keep highest PnL)
+      for (const t of withTwitter) {
+        const existing = publicTradersMap.get(t.proxyWallet);
+        
+        if (!existing || (t.pnl || 0) > (existing.pnl || 0)) {
+          publicTradersMap.set(t.proxyWallet, {
+            ...t,
+            period, // Track which period had the best PnL
+          });
+        }
+      }
+      
+      logger.info(`   ✓ Total unique: ${publicTradersMap.size}`);
+      
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
+    // Convert to array and sort by PnL (highest first)
+    let publicTraders = Array.from(publicTradersMap.values());
+    publicTraders.sort((a, b) => (b.pnl || 0) - (a.pnl || 0));
+    
+    // Take top 200
+    publicTraders = publicTraders.slice(0, MAX_TRADERS);
+    
+    logger.info('');
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    logger.info(`✅ SELECTED TOP-${publicTraders.length} PUBLIC TRADERS`);
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    logger.info('💾 Saving to database...');
+    
+    let saved = 0;
+    let updated = 0;
+    
+    for (const t of publicTraders) {
+      if (!t.proxyWallet) continue;
+      
+      try {
+        const profilePic = t.profileImage || null;
+        const volume = t.volume || 0;
+        const marketsTraded = t.markets_traded || 0;
+        
+        // Calculate win rate (approximation based on PnL and volume)
+        let winRate = 0.5; // Default 50%
+        if (volume > 0 && t.pnl) {
+          const estimatedWins = Math.max(0, Math.min(1, 0.5 + (t.pnl / volume) * 0.5));
+          winRate = estimatedWins;
+        }
+        
+        // Calculate rarity score based on PnL and volume
+        const pnlScore = Math.max(0, (t.pnl || 0) / 1000); // $1K = 1 point
+        const volumeScore = Math.max(0, volume / 10000); // $10K volume = 1 point
+        const rarityScore = Math.floor(pnlScore + volumeScore);
+        
+        // Assign tier based on ranking
+        const rank = publicTraders.findIndex(trader => trader.proxyWallet === t.proxyWallet) + 1;
+        let tier = 'B';
+        if (rank <= 20) tier = 'S'; // Top 20 = S tier
+        else if (rank <= 80) tier = 'A'; // Top 80 = A tier
+        else tier = 'B'; // Rest = B tier
+        
+        const traderData = {
+          address: t.proxyWallet.toLowerCase(),
+          displayName: t.userName || t.xUsername || null,
+          profilePicture: profilePic,
+          twitterUsername: t.xUsername || null,
+          tier: tier,
+          rarityScore: rarityScore,
+          realizedPnl: t.pnl || 0,
+          totalPnl: t.pnl || 0,
+          winRate: winRate,
+          tradeCount: marketsTraded,
+          lastActiveAt: new Date(),
+          // NO COORDINATES YET (will be added manually later)
+          latitude: null,
+          longitude: null,
+          country: null,
+        };
+        
+        // Upsert trader (create or update)
+        const result = await prisma.trader.upsert({
+          where: { address: traderData.address },
+          create: traderData,
+          update: {
+            displayName: traderData.displayName,
+            profilePicture: traderData.profilePicture,
+            twitterUsername: traderData.twitterUsername,
+            tier: traderData.tier,
+            rarityScore: traderData.rarityScore,
+            realizedPnl: traderData.realizedPnl,
+            totalPnl: traderData.totalPnl,
+            winRate: traderData.winRate,
+            tradeCount: traderData.tradeCount,
+            lastActiveAt: traderData.lastActiveAt,
+          },
+        });
+        
+        if (result) {
+          const isNew = !result.createdAt || (new Date().getTime() - new Date(result.createdAt).getTime()) < 1000;
+          if (isNew) saved++;
+          else updated++;
+        }
+        
+      } catch (error: any) {
+        logger.error({ address: t.proxyWallet, error: error.message }, 'Failed to save trader');
+      }
+    }
+    
+    logger.info('');
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    logger.info(`✅ PUBLIC TRADERS SYNC COMPLETED!`);
+    logger.info(`   📊 Total processed: ${publicTraders.length}`);
+    logger.info(`   ✨ New traders: ${saved}`);
+    logger.info(`   🔄 Updated traders: ${updated}`);
+    logger.info('');
+    logger.info('📍 NEXT STEP: Add locations for these traders manually');
+    logger.info('   They will appear in the X (Media) tab in the leaderboard');
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    
+  } catch (error: any) {
+    logger.error({ error: error.message }, '❌ Failed to sync public traders');
     throw error;
   }
 }
