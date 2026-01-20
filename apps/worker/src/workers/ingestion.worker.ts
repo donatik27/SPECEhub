@@ -186,6 +186,10 @@ async function syncLeaderboard(payload: any) {
   
     logger.info(`✅ Leaderboard sync completed! Saved ${saved} traders`);
     
+    // 🗺️ ALWAYS update manually added locations (overwrite if needed)
+    logger.info('🗺️  Updating manually added trader locations...');
+    await updateManualLocations();
+    
     // 🗺️ ONE-TIME: Add geolocation if not already done
     const tradersWithLocation = await prisma.trader.count({
       where: {
@@ -206,6 +210,85 @@ async function syncLeaderboard(payload: any) {
   } catch (error: any) {
     logger.error({ error: error.message }, 'Leaderboard sync failed');
     throw error;
+  }
+}
+
+// Update manually added traders (always runs, overwrites existing locations)
+async function updateManualLocations() {
+  const MANUAL_UPDATES: Record<string, string> = {
+    '0xTrinity': 'Europe',
+    'Domahhhh': 'Ireland',
+    'failstonerPM': 'Canada',
+    'BitalikWuterin': 'Australasia',
+    'Foster': 'United States',
+  };
+
+  const LOCATION_COORDS: Record<string, { lat: number; lon: number }> = {
+    'Europe': { lat: 50.0, lon: 10.0 },
+    'Ireland': { lat: 53.4129, lon: -8.2439 },
+    'Canada': { lat: 56.1304, lon: -106.3468 },
+    'Australasia': { lat: -25.0, lon: 135.0 },
+    'United States': { lat: 37.0902, lon: -95.7129 },
+    'Germany': { lat: 51.1657, lon: 10.4515 },
+    'Brazil': { lat: -14.2350, lon: -51.9253 },
+    'Italy': { lat: 41.8719, lon: 12.5674 },
+    'East Asia & Pacific': { lat: 35.0, lon: 105.0 },
+    'Spain': { lat: 40.4637, lon: -3.7492 },
+    'Australia': { lat: -25.2744, lon: 133.7751 },
+    'Hong Kong': { lat: 22.3193, lon: 114.1694 },
+    'United Kingdom': { lat: 55.3781, lon: -3.4360 },
+    'Korea': { lat: 37.5665, lon: 126.9780 },
+    'Japan': { lat: 36.2048, lon: 138.2529 },
+    'Lithuania': { lat: 55.1694, lon: 23.8813 },
+    'Denmark': { lat: 56.2639, lon: 9.5018 },
+    'Thailand': { lat: 15.8700, lon: 100.9925 },
+    'Slovakia': { lat: 48.6690, lon: 19.6990 },
+    'Morocco': { lat: 31.7917, lon: -7.0926 },
+    'Estonia': { lat: 58.5953, lon: 25.0136 },
+    'Turkey': { lat: 38.9637, lon: 35.2433 },
+    'Indonesia': { lat: -0.7893, lon: 113.9213 },
+    'West Asia': { lat: 29.0, lon: 53.0 },
+    'Poland': { lat: 51.9194, lon: 19.1451 },
+    'Austria': { lat: 47.5162, lon: 14.5501 },
+    'North America': { lat: 54.5260, lon: -105.2551 },
+    'Netherlands': { lat: 52.1326, lon: 5.2913 },
+    'Ukraine': { lat: 48.3794, lon: 31.1656 },
+  };
+
+  try {
+    logger.info(`🔄 Updating ${Object.keys(MANUAL_UPDATES).length} manually added traders...`);
+    
+    let updated = 0;
+    for (const [twitterUsername, country] of Object.entries(MANUAL_UPDATES)) {
+      const coords = LOCATION_COORDS[country];
+      if (!coords) {
+        logger.warn({ twitterUsername, country }, 'Country coords not found');
+        continue;
+      }
+
+      // Add small random offset
+      const latOffset = (Math.random() - 0.5) * 2;
+      const lonOffset = (Math.random() - 0.5) * 2;
+
+      const result = await prisma.trader.updateMany({
+        where: { twitterUsername },
+        data: {
+          latitude: coords.lat + latOffset,
+          longitude: coords.lon + lonOffset,
+          country: country,
+          tier: 'S', // Manual traders are S-tier
+        },
+      });
+
+      if (result.count > 0) {
+        logger.info({ twitterUsername, country, updated: result.count }, '✅ Updated');
+        updated += result.count;
+      }
+    }
+
+    logger.info(`✅ Manual locations updated: ${updated} traders`);
+  } catch (error: any) {
+    logger.error({ error: error.message }, 'Failed to update manual locations');
   }
 }
 
@@ -245,6 +328,10 @@ async function addGeolocation() {
   const TRADER_LOCATIONS: Record<string, string> = {
     '0xTactic': 'Germany',
     '0xTrinity': 'Europe',
+    'Domahhhh': 'Ireland',
+    'failstonerPM': 'Canada',
+    'BitalikWuterin': 'Australasia',
+    'Foster': 'United States',
     'AbrahamKurland': 'Brazil',
     'AnjunPoly': 'Italy',
     'AnselFang': 'East Asia & Pacific',
