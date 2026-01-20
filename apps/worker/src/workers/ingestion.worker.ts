@@ -197,6 +197,10 @@ async function syncLeaderboard(payload: any) {
     logger.info('🎯 Syncing static X traders...');
     await syncStaticXTraders();
     
+    // 💰 UPDATE PNL FOR ALL X TRADERS (not just static, but ALL with twitterUsername)
+    logger.info('💰 Updating PnL for ALL X traders...');
+    await syncAllXTradersPnl();
+    
     // 🗺️ ALWAYS update manually added locations (overwrite if needed)
     logger.info('🗺️  Updating manually added trader locations...');
     await updateManualLocations();
@@ -354,6 +358,90 @@ async function syncStaticXTraders() {
     
   } catch (error: any) {
     logger.error({ error: error.message }, '❌ Failed to sync static X traders');
+  }
+}
+
+// Update PnL for ALL X traders (not just static, but ALL with twitterUsername)
+async function syncAllXTradersPnl() {
+  try {
+    // Find ALL traders with twitterUsername (X traders)
+    const allXTraders = await prisma.trader.findMany({
+      where: {
+        twitterUsername: { not: null },
+      },
+      select: {
+        address: true,
+        twitterUsername: true,
+        totalPnl: true,
+      },
+    });
+    
+    logger.info(`🔄 Found ${allXTraders.length} X traders in DB, updating PnL...`);
+    
+    let updated = 0;
+    let failed = 0;
+    
+    for (const trader of allXTraders) {
+      try {
+        const address = trader.address.toLowerCase();
+        
+        // Fetch ALL-TIME PnL via user-pnl-api (same as Polymarket uses)
+        let allTimePnl = trader.totalPnl ? Number(trader.totalPnl) : 0; // Keep existing if fetch fails
+        try {
+          const pnlRes = await fetch(
+            `https://user-pnl-api.polymarket.com/user-pnl?user_address=${address}&interval=1m&fidelity=1d`
+          );
+          
+          if (pnlRes.ok) {
+            const pnlData = await pnlRes.json();
+            // Get last (most recent) PnL value
+            if (Array.isArray(pnlData) && pnlData.length > 0) {
+              const latest = pnlData[pnlData.length - 1];
+              allTimePnl = latest.p || 0;
+            }
+          }
+          
+          // Rate limit (important for 182 traders!)
+          await new Promise(resolve => setTimeout(resolve, 150));
+        } catch (error: any) {
+          logger.warn({ error: error.message, address }, 'Failed to fetch user-pnl');
+          failed++;
+          continue;
+        }
+        
+        // Update PnL in DB
+        await prisma.trader.update({
+          where: { address },
+          data: {
+            realizedPnl: allTimePnl,
+            totalPnl: allTimePnl,
+            lastActiveAt: new Date(),
+          },
+        });
+        
+        updated++;
+        
+        if (updated % 10 === 0) {
+          logger.info(`   ⏳ Progress: ${updated}/${allXTraders.length} traders updated...`);
+        }
+        
+      } catch (error: any) {
+        logger.error({ error: error.message, address: trader.address }, '❌ Failed to update trader PnL');
+        failed++;
+      }
+    }
+    
+    logger.info('');
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    logger.info('✅ ALL X TRADERS PNL SYNC COMPLETED!');
+    logger.info(`   🔄 Updated: ${updated}`);
+    logger.info(`   ❌ Failed: ${failed}`);
+    logger.info(`   📊 Total X traders: ${allXTraders.length}`);
+    logger.info('   💰 Using user-pnl-api.polymarket.com');
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    
+  } catch (error: any) {
+    logger.error({ error: error.message }, '❌ Failed to sync all X traders PnL');
   }
 }
 
