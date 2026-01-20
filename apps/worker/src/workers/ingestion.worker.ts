@@ -263,24 +263,26 @@ async function syncStaticXTraders() {
       try {
         const address = data.address.toLowerCase();
         
-        // Fetch ALL-TIME PnL via /value endpoint
+        // Fetch ALL-TIME PnL via user-pnl-api (same as Polymarket uses)
         let allTimePnl = 0;
         try {
-          const valueRes = await fetch(
-            `https://data-api.polymarket.com/value?user=${address}`
+          const pnlRes = await fetch(
+            `https://user-pnl-api.polymarket.com/user-pnl?user_address=${address}&interval=1m&fidelity=1d`
           );
           
-          if (valueRes.ok) {
-            const valueData = await valueRes.json();
-            if (Array.isArray(valueData) && valueData.length > 0) {
-              allTimePnl = valueData[0].value || 0;
+          if (pnlRes.ok) {
+            const pnlData = await pnlRes.json();
+            // Get last (most recent) PnL value
+            if (Array.isArray(pnlData) && pnlData.length > 0) {
+              const latest = pnlData[pnlData.length - 1];
+              allTimePnl = latest.p || 0;
             }
           }
           
           // Rate limit
           await new Promise(resolve => setTimeout(resolve, 200));
         } catch (error: any) {
-          logger.error({ error: error.message, address }, 'Failed to fetch /value');
+          logger.error({ error: error.message, address }, 'Failed to fetch user-pnl');
         }
         
         // Get metadata from leaderboard if available
