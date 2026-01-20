@@ -8,10 +8,10 @@ export const X_TRADERS_STATIC: Record<string, { address: string; country?: strin
   "ascetic0x": { address: "0xfcbecc7e5186e88e03445b81f593685d62828f44", country: "Croatia" },
   "BagCalls": { address: "0xb7f55b6d32c2ee3768192d676cd66354f51fc669", country: "Brazil" },
   "bartiedarin": { address: "0x2c28cc0884a793b1fbfde9c6881f6bf549db7ba5", country: "United States" },
-  "BigRabbit_poly": { address: "0xeb22f4735df6bd5d14e1b5fd10faefa7757d808a" },
+  "BigRabbit_poly": { address: "0xeb22f4735df6bd5d14e1b5fd10faefa7757d808a", country: "Canada" },
   "BitalikWuterin": { address: "0xe72bb501df5306c75c89383d48a1e81073fbb0a0", country: "Australasia" },
   "CoffeeLover_pm": { address: "0xc1b399b26020a4f689108e9640fd3dc8ffc8501c", country: "Chile" },
-  "CoinkingEth": { address: "0xaf429dce2fb4c31e3af6549f46fd513f516a68d9" },
+  "CoinkingEth": { address: "0xaf429dce2fb4c31e3af6549f46fd513f516a68d9", country: "Korea" },
   "cynical_reason": { address: "0xce66940dfe6dc18bc151d66d52a66eb2121bcc64", country: "Estonia" },
   "debased_PM": { address: "0x24c8cf69a0e0a17eee21f69d29752bfa32e823e1", country: "Turkey" },
   "DigAssets01": { address: "0x6b3f0f764b3c74e8de8f87b04e3c327aca4443dc", country: "United States" },
@@ -68,6 +68,24 @@ export const X_TRADERS_STATIC: Record<string, { address: string; country?: strin
   "XTDimasXT": { address: "0x0aa3744338ddf9f39fb3a80bc9c916179d0b64e9" },
   "_decap": { address: "0xe25b9180f5687aa85bd94ee309bb72a464320f1b", country: "United Arab Emirates" },
   "aenews": { address: "0x44c1dfe43260c94ed4f1d00de2e1f80fb113ebc1", country: "United States" },
+  
+  // Added batch 2 - 18 new traders with locations
+  "0xSnitchySnitch": { address: "0x93b77008dea1a1a0b3e1768a990a8bb835657d51", country: "Ukraine" },
+  "AK_okx": { address: "0x8c104bb4adaa520193fa1b53a42acc98b0f88977", country: "Hong Kong" },
+  "Batuhan2013": { address: "0x53515c8447275edfac486e6d70a6e3bf49c19b3c", country: "Turkey" },
+  "BestofX5": { address: "0x96ef5e15412e280b23b23a92c444c8d262a15523", country: "India" },
+  "Betting_Quant": { address: "0xf3505345381358c2311ef9bc8096ace10165f3ff", country: "Georgia" },
+  "BtcEthKai": { address: "0x30447f52f18d7fa8e04f82c104c3207399ee9ff8", country: "Hong Kong" },
+  "Cyberonecrypto": { address: "0xb7b3ed1c02a77a200b600ac407747be2f3b79573", country: "Vietnam" },
+  "CynicSong": { address: "0x4b3c5ba3a3eb539a007072cfe970f83bb6da7cd3", country: "Japan" },
+  "DanyaBBRV": { address: "0x56117c870c73397091de6a192240a8bcb22de5f4", country: "Netherlands" },
+  "DespinaWade9": { address: "0x4252a3b4b7c13797b4fa691c882d14e3c92488cd", country: "Hong Kong" },
+  "DouXiao42633": { address: "0x25e28169faea17421fcd4cc361f6436d1e449a09", country: "Hong Kong" },
+  "Edwinkang": { address: "0x46679fb51fbe6772b5c7d6c65983a55f1cb1cab0", country: "Malaysia" },
+  "Faridud23071861": { address: "0x9d354eb1e230ea55789c3738febbded84fd321ce", country: "Japan" },
+  "Feifeitian_0924": { address: "0x68469ab9009f2783e243a1d0957f4cdd8939b797", country: "Indonesia" },
+  "Gjts88": { address: "0xbdc3e475821b3512b1ae1a492f89d15323e4c0ea", country: "Argentina" },
+  "Gr0wCrypt0": { address: "0xe08e25295ce4a45b259cb8b20132782e55241d61", country: "United States" },
 };
 
 // Helper to check if address belongs to X trader
