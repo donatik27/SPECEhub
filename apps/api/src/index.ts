@@ -10,6 +10,27 @@ app.get('/health', (_req, res) => {
   res.json({ ok: true });
 });
 
+// Trigger worker job (for testing/manual updates)
+app.post('/api/trigger-job', async (req, res) => {
+  try {
+    const { jobName } = req.body;
+    if (!jobName) {
+      return res.status(400).json({ error: 'jobName required' });
+    }
+
+    // Forward to worker via simple HTTP call
+    // NOTE: This requires worker to have HTTP endpoint, or use BullMQ directly
+    // For now, just return success (job will run via scheduler)
+    res.json({ 
+      success: true, 
+      message: `Job "${jobName}" will run via scheduler within 5 minutes`,
+      note: 'Manual trigger not yet implemented - use scheduler'
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/test-db', async (_req, res) => {
   try {
     const smartMarkets = await prisma.marketSmartStats.count();
