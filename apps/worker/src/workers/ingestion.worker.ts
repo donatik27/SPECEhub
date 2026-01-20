@@ -233,11 +233,35 @@ async function syncStaticXTraders() {
     let updated = 0;
     let notFound = 0;
     
-    // Search in ALL leaderboards (month, week, day) to find PnL data
-    const leaderboards = new Map<string, any>(); // address -> trader data
+    // Search in ALL leaderboards to find traders, but ONLY use MONTH PnL!
+    const monthLeaderboard = new Map<string, any>(); // address -> MONTH trader data
+    const allAddresses = new Set<string>(); // all addresses found in any period
     
-    logger.info('📥 Fetching leaderboards to find X traders PnL...');
-    for (const period of ['month', 'week', 'day']) {
+    logger.info('📥 Fetching MONTH leaderboard (for PnL)...');
+    try {
+      const res = await fetch(
+        `https://data-api.polymarket.com/v1/leaderboard?timePeriod=month&orderBy=PNL&limit=1000`
+      );
+      
+      if (res.ok) {
+        const traders = await res.json();
+        for (const t of traders) {
+          if (t.proxyWallet) {
+            const address = t.proxyWallet.toLowerCase();
+            monthLeaderboard.set(address, t);
+            allAddresses.add(address);
+          }
+        }
+        logger.info(`   ✓ MONTH: found ${traders.length} traders (PnL source)`);
+      }
+      await new Promise(resolve => setTimeout(resolve, 500));
+    } catch (error: any) {
+      logger.error({ error: error.message }, 'Failed to fetch MONTH leaderboard');
+    }
+    
+    // Search week/day ONLY to find additional addresses (not for PnL!)
+    logger.info('📥 Searching week/day leaderboards (for addresses only)...');
+    for (const period of ['week', 'day']) {
       try {
         const res = await fetch(
           `https://data-api.polymarket.com/v1/leaderboard?timePeriod=${period}&orderBy=PNL&limit=1000`
@@ -247,14 +271,10 @@ async function syncStaticXTraders() {
           const traders = await res.json();
           for (const t of traders) {
             if (t.proxyWallet) {
-              const address = t.proxyWallet.toLowerCase();
-              // Keep best PnL
-              if (!leaderboards.has(address) || (t.pnl || 0) > (leaderboards.get(address).pnl || 0)) {
-                leaderboards.set(address, t);
-              }
+              allAddresses.add(t.proxyWallet.toLowerCase());
             }
           }
-          logger.info(`   ✓ ${period}: found ${traders.length} traders`);
+          logger.info(`   ✓ ${period}: found ${traders.length} traders (addresses only)`);
         }
         
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -263,63 +283,99 @@ async function syncStaticXTraders() {
       }
     }
     
-    logger.info(`📊 Total unique traders in leaderboards: ${leaderboards.size}`);
+    logger.info(`📊 Total unique addresses: ${allAddresses.size}`);
     logger.info('💾 Upserting static X traders...');
     
     // Now upsert each static X trader
     for (const [twitterUsername, data] of Object.entries(X_TRADERS_STATIC)) {
       try {
         const address = data.address.toLowerCase();
-        const apiTrader = leaderboards.get(address);
+        
+        // Check if found in any leaderboard
+        const foundInAnyPeriod = allAddresses.has(address);
+        // But ALWAYS use MONTH PnL (or 0 if not in month)
+        const monthTrader = monthLeaderboard.get(address);
         
         const existing = await prisma.trader.findUnique({
           where: { address },
           select: { address: true },
         });
         
-        if (apiTrader) {
-          // Found in leaderboard - use real data
-          const volume = apiTrader.volume || 0;
-          const marketsTraded = apiTrader.markets_traded || 0;
-          const winRate = marketsTraded > 0 && apiTrader.pnl > 0 
-            ? Math.min(((apiTrader.pnl / volume) * 100), 100)
+        if (monthTrader) {
+          // Found in MONTH leaderboard - use MONTH PnL
+          const volume = monthTrader.volume || 0;
+          const marketsTraded = monthTrader.markets_traded || 0;
+          const winRate = marketsTraded > 0 && monthTrader.pnl > 0 
+            ? Math.min(((monthTrader.pnl / volume) * 100), 100)
             : 0;
           
           await prisma.trader.upsert({
             where: { address },
             create: {
               address,
-              displayName: apiTrader.userName || twitterUsername,
-              profilePicture: apiTrader.profileImage || null,
+              displayName: monthTrader.userName || twitterUsername,
+              profilePicture: monthTrader.profileImage || null,
               twitterUsername: twitterUsername,
               tier: 'S',
-              realizedPnl: apiTrader.pnl || 0,
-              totalPnl: apiTrader.pnl || 0,
+              realizedPnl: monthTrader.pnl || 0,
+              totalPnl: monthTrader.pnl || 0,
               tradeCount: marketsTraded,
               winRate: winRate,
-              rarityScore: Math.floor((apiTrader.pnl || 0) + (volume * 0.1)),
+              rarityScore: Math.floor((monthTrader.pnl || 0) + (volume * 0.1)),
             },
             update: {
-              displayName: apiTrader.userName || twitterUsername,
-              profilePicture: apiTrader.profileImage || null,
+              displayName: monthTrader.userName || twitterUsername,
+              profilePicture: monthTrader.profileImage || null,
               twitterUsername: twitterUsername,
               tier: 'S',
-              realizedPnl: apiTrader.pnl || 0,
-              totalPnl: apiTrader.pnl || 0,
+              realizedPnl: monthTrader.pnl || 0,
+              totalPnl: monthTrader.pnl || 0,
               tradeCount: marketsTraded,
               winRate: winRate,
-              rarityScore: Math.floor((apiTrader.pnl || 0) + (volume * 0.1)),
+              rarityScore: Math.floor((monthTrader.pnl || 0) + (volume * 0.1)),
               lastActiveAt: new Date(),
             },
           });
           
           if (existing) {
             updated++;
-            logger.info({ twitterUsername, pnl: apiTrader.pnl }, '   ✅ Updated with real data');
+            logger.info({ twitterUsername, monthPnl: monthTrader.pnl }, '   ✅ Updated with MONTH PnL');
           } else {
             created++;
-            logger.info({ twitterUsername, pnl: apiTrader.pnl }, '   ✨ Created with real data');
+            logger.info({ twitterUsername, monthPnl: monthTrader.pnl }, '   ✨ Created with MONTH PnL');
           }
+        } else if (foundInAnyPeriod) {
+          // Found in week/day but NOT in month - PnL = 0
+          await prisma.trader.upsert({
+            where: { address },
+            create: {
+              address,
+              displayName: twitterUsername,
+              profilePicture: null,
+              twitterUsername: twitterUsername,
+              tier: 'S',
+              realizedPnl: 0,
+              totalPnl: 0,
+              tradeCount: 0,
+              winRate: 0,
+              rarityScore: 0,
+            },
+            update: {
+              twitterUsername: twitterUsername,
+              tier: 'S',
+              realizedPnl: 0,
+              totalPnl: 0,
+            },
+          });
+          
+          if (existing) {
+            updated++;
+            logger.warn({ twitterUsername }, '   ⚠️  Updated (not in MONTH, PnL=0)');
+          } else {
+            created++;
+            logger.warn({ twitterUsername }, '   ⚠️  Created (not in MONTH, PnL=0)');
+          }
+          notFound++;
         } else {
           // Not found in any leaderboard - create basic record
           await prisma.trader.upsert({
