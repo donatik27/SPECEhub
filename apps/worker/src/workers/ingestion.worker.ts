@@ -534,6 +534,7 @@ async function updateManualLocations() {
     'South America': { lat: -8.7832, lon: -55.4915 },
     'Iceland': { lat: 64.9631, lon: -19.0208 },
     'Georgia': { lat: 42.3154, lon: 43.3569 },
+    'Sweden': { lat: 60.1282, lon: 18.6435 },
   };
 
   try {
