@@ -174,6 +174,47 @@ app.get('/api/traders-with-location', async (_req, res) => {
   }
 });
 
+// Alias for map page (same as traders-with-location)
+app.get('/api/traders-map-static', async (_req, res) => {
+  try {
+    const traders = await prisma.trader.findMany({
+      where: {
+        AND: [
+          { latitude: { not: null } },
+          { longitude: { not: null } },
+          { twitterUsername: { not: null } }, // Only X traders for map
+        ],
+      },
+      select: {
+        address: true,
+        displayName: true,
+        profilePicture: true,
+        twitterUsername: true,
+        tier: true,
+        rarityScore: true,
+        latitude: true,
+        longitude: true,
+        country: true,
+        totalPnl: true,
+        winRate: true,
+      },
+      orderBy: { totalPnl: 'desc' },
+    });
+
+    const serializedTraders = traders.map((trader: any) => ({
+      ...trader,
+      totalPnl: Number(trader.totalPnl),
+      latitude: Number(trader.latitude),
+      longitude: Number(trader.longitude),
+    }));
+
+    res.json(serializedTraders);
+  } catch (error) {
+    console.error('Failed to fetch map traders:', error);
+    res.status(500).json({ error: 'Failed to fetch traders' });
+  }
+});
+
 // NEW: Enrich static map data with real trader data from DB
 app.post('/api/traders-map-enriched', async (req, res) => {
   try {
